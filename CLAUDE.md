@@ -6,9 +6,10 @@ to you too, and it is how this repo guarantees quality.
 ## What this repository is
 
 `bootleg`: a Go CLI that reads `Artist - Title` lines from a text file and
-sends the songs to a playlist, the Library and/or Favourite Songs (`-to`). It uses the Apple Music web player's
-tokens and private `amp-api.music.apple.com` endpoints, not MusicKit, so no
-paid developer account is needed. The user supplies the tokens.
+sends the songs to a playlist, the Library and/or Favourite Songs (`-to`).
+It uses the Apple Music web player's tokens and private
+`amp-api.music.apple.com` endpoints, not MusicKit, so no paid developer
+account is needed. The user supplies the tokens.
 
 The maintainer is experienced in backend/infra but new to Go. Write
 idiomatic, boring Go, and explain non-obvious idioms in a short comment.
