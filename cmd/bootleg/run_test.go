@@ -803,3 +803,90 @@ func TestRunWithoutTargetsRefuses(t *testing.T) {
 		t.Errorf("sent %d POST requests, want 0", f.posts)
 	}
 }
+
+// With pl,lib,fav, a failure at the library step must not suggest
+// re-running pl (that would create a second playlist).
+func TestRunPartialWriteSaysHowToFinish(t *testing.T) {
+	f := &fakeAPI{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/me/library" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		f.handler(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	api := applemusic.New(srv.Client(), srv.URL, "fake-dev", "fake-user")
+	path := filepath.Join(t.TempDir(), "songs.txt")
+	if err := os.WriteFile(path, []byte("Portishead - Glory Box\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := options{to: targets{playlist: true, library: true, favorites: true}, name: "Mix", file: path}
+	err := run(context.Background(), opts, api, io.Discard, discardLogger())
+	if err == nil {
+		t.Fatal("run() error = nil, want the library failure")
+	}
+	for _, want := range []string{"already done: playlist", "bootleg -to lib,fav " + path} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err, want)
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.posts != 1 || len(f.favs) != 0 {
+		t.Errorf("creates %d, favs %v; want 1 create and no favourites after the failure", f.posts, f.favs)
+	}
+}
+
+// Ctrl-C while waiting between favourites stops at once, and the error says
+// the outcome is uncertain (earlier favourites were applied).
+func TestRunCancelledBetweenFavorites(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := &fakeAPI{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.handler(w, r)
+		if r.Method == http.MethodPut {
+			// "Ctrl-C" shortly after the first favourite's response, i.e.
+			// inside the 1s wait before the second. Cancelling in the
+			// handler itself could abort the client's read of this response.
+			go func() { time.Sleep(100 * time.Millisecond); cancel() }()
+		}
+	}))
+	t.Cleanup(srv.Close)
+	api := applemusic.New(srv.Client(), srv.URL, "fake-dev", "fake-user")
+	path := filepath.Join(t.TempDir(), "songs.txt")
+	if err := os.WriteFile(path, []byte("Björk - Army of Me\nPortishead - Glory Box\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	// -delay also paces the two searches (1s total); the wait after the first
+	// favourite would be another second, but Ctrl-C cuts it short.
+	err := run(ctx, options{to: targets{favorites: true}, delay: time.Second, file: path}, api, io.Discard, discardLogger())
+	if !errors.Is(err, errWriteInterrupted) || !strings.Contains(err.Error(), "favourite 2 of 2") {
+		t.Fatalf("run() error = %v, want errWriteInterrupted at favourite 2 of 2", err)
+	}
+	if elapsed := time.Since(start); elapsed > 1900*time.Millisecond {
+		t.Errorf("took %v: the wait after the first favourite was not cut short", elapsed)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.favs) != 1 {
+		t.Errorf("favourited %v, want exactly the first song", f.favs)
+	}
+}
+
+func TestRunDryRunWritesNothingAnywhere(t *testing.T) {
+	f, api, path := setup(t, "Portishead - Glory Box\n")
+	opts := options{to: targets{library: true, favorites: true}, dryRun: true, file: path}
+	if err := run(context.Background(), opts, api, io.Discard, discardLogger()); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.posts+f.appends+len(f.library)+len(f.favs) != 0 {
+		t.Errorf("dry run wrote: creates %d, appends %d, library %v, favs %v", f.posts, f.appends, f.library, f.favs)
+	}
+}

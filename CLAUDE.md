@@ -68,7 +68,7 @@ internal/applemusic     HTTP client: Search, CreatePlaylist, AddTracks, AddToLib
   automatic "Favourite Songs" playlist and joins the Library, even if it
   wasn't there. Undo: `DELETE` the same path → 204. (`/v1/me/favorites`
   exists but isn't what the app's star uses; don't switch to it.)
-- All of the above verified against the real API on 2026-10-08.
+- All of the above verified against the real API on 2026-10-08 (CEST; still the 7th in UTC).
 - 401/403 means the web-player tokens expired (exit 2).
 
 ## Exit codes

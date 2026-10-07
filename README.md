@@ -129,7 +129,9 @@ bootleg -to pl,fav -name "Road trip" x.txt    # playlist and star them
 
 Long forms work too (`playlist`, `library`, `favorites`/`favourites`).
 Destinations are written in the order playlist, Library, favourites;
-favouriting is one request per song, paced by `-delay`.
+favouriting is one request per song, paced by `-delay`. If one step fails,
+the error says what was already done and the exact command to finish
+without creating the playlist twice.
 
 | Flag | Meaning |
 |---|---|
@@ -182,7 +184,7 @@ Matched 4, unmatched 1, skipped 1 (blank or comment).
 Unmatched:
   line 6: The Nonexistents - Imaginary Song
 Written to unmatched.txt - fix the lines and feed it back in.
-Created "Road trip" with 4 songs.
+Created "Road trip" with 4 songs (playlist ID p.Qx9Lm2Kd).
 ```
 
 Fix the lines in `unmatched.txt` and add them to the same playlist. The ID is

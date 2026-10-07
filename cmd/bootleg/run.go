@@ -117,32 +117,56 @@ func run(ctx context.Context, opts options, api *applemusic.Client, stdout io.Wr
 }
 
 // writeTargets sends the matched songs to each destination in -to, in a
-// fixed order: playlist, library, favourites. It stops at the first error;
-// what was already done is reported on stdout.
+// fixed order: playlist, library, favourites. It stops at the first error,
+// and that error says what was already done and how to finish without
+// repeating it (re-running with pl would create a second playlist).
 func writeTargets(ctx context.Context, opts options, api *applemusic.Client, ids []string, stdout io.Writer, log *slog.Logger) error {
+	var done []string // human-readable, for the error
+	var rest []string // -to values left after the playlist step
+	if opts.to.library {
+		rest = append(rest, "lib")
+	}
+	if opts.to.favorites {
+		rest = append(rest, "fav")
+	}
+	// fail wraps err (keeping its class for the exit code) with a resume hint.
+	fail := func(err error) error {
+		err = writeErr(err)
+		if len(done) == 0 {
+			return err
+		}
+		// Favourites are idempotent, so re-running the fav step from the
+		// start is safe; the playlist step is never repeated.
+		return fmt.Errorf("%w (already done: %s; to finish, run: bootleg -to %s %s)",
+			err, strings.Join(done, ", "), strings.Join(rest, ","), opts.file)
+	}
+
 	if opts.to.playlist {
 		if opts.playlistID != "" {
 			if err := api.AddTracks(ctx, opts.playlistID, ids); err != nil {
-				return writeErr(fmt.Errorf("add to playlist %s: %w", opts.playlistID, err))
+				return fail(fmt.Errorf("add to playlist %s: %w", opts.playlistID, err))
 			}
 			log.Info("added to playlist", "id", opts.playlistID, "tracks", len(ids))
 			fmt.Fprintf(stdout, "Added %d songs to playlist %s.\n", len(ids), opts.playlistID)
 		} else {
 			id, err := api.CreatePlaylist(ctx, opts.name, ids)
 			if err != nil {
-				return writeErr(fmt.Errorf("create playlist %q: %w", opts.name, err))
+				return fail(fmt.Errorf("create playlist %q: %w", opts.name, err))
 			}
 			log.Info("created playlist", "name", opts.name, "id", id, "tracks", len(ids))
-			fmt.Fprintf(stdout, "Created %q with %d songs.\n", opts.name, len(ids))
+			fmt.Fprintf(stdout, "Created %q with %d songs (playlist ID %s).\n", opts.name, len(ids), id)
 		}
+		done = append(done, "playlist")
 	}
 
 	if opts.to.library {
 		if err := api.AddToLibrary(ctx, ids); err != nil {
-			return writeErr(fmt.Errorf("add to library: %w", err))
+			return fail(fmt.Errorf("add to library: %w", err))
 		}
 		log.Info("added to library", "tracks", len(ids))
 		fmt.Fprintf(stdout, "Added %d songs to your Library.\n", len(ids))
+		done = append(done, "library")
+		rest = rest[1:]
 	}
 
 	if opts.to.favorites {
@@ -150,11 +174,11 @@ func writeTargets(ctx context.Context, opts options, api *applemusic.Client, ids
 		for i, id := range ids {
 			if i > 0 {
 				if err := sleep(ctx, opts.delay); err != nil {
-					return writeErr(fmt.Errorf("favourite %d of %d: %w", i+1, len(ids), err))
+					return fail(fmt.Errorf("favourite %d of %d: %w", i+1, len(ids), err))
 				}
 			}
 			if err := api.Favorite(ctx, id); err != nil {
-				return writeErr(fmt.Errorf("favourite %d of %d: %w", i+1, len(ids), err))
+				return fail(fmt.Errorf("favourite %d of %d: %w", i+1, len(ids), err))
 			}
 			log.Debug("favourited", "id", id)
 		}

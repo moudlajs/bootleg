@@ -165,7 +165,6 @@ func resolveVersion(ldflags string, readBuildInfo func() (*debug.BuildInfo, bool
 // already printed the problem and the usage text.
 var errFlagsReported = errors.New("invalid flags")
 
-// options are the parsed command-line flags and argument.
 // targets are the places matched songs go, from -to.
 type targets struct {
 	playlist  bool // create (-name) or append to (-playlist-id) a playlist
@@ -192,6 +191,7 @@ func parseTargets(s string) (targets, error) {
 	return t, nil
 }
 
+// options are the parsed command-line flags and argument.
 type options struct {
 	to          targets
 	name        string
