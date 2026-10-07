@@ -822,12 +822,13 @@ func TestRunPartialWriteSaysHowToFinish(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := options{to: targets{playlist: true, library: true, favorites: true}, name: "Mix", file: path}
+	opts := options{to: targets{playlist: true, library: true, favorites: true}, name: "Mix", storefront: "cz", file: path}
 	err := run(context.Background(), opts, api, io.Discard, discardLogger())
 	if err == nil {
 		t.Fatal("run() error = nil, want the library failure")
 	}
-	for _, want := range []string{"already done: playlist", "bootleg -to lib,fav " + path} {
+	// The storefront is repeated so the re-run matches the same song IDs.
+	for _, want := range []string{"already done: playlist", "bootleg -to lib,fav -storefront cz " + path} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err, want)
 		}

@@ -136,9 +136,14 @@ func writeTargets(ctx context.Context, opts options, api *applemusic.Client, ids
 			return err
 		}
 		// Favourites are idempotent, so re-running the fav step from the
-		// start is safe; the playlist step is never repeated.
-		return fmt.Errorf("%w (already done: %s; to finish, run: bootleg -to %s %s)",
-			err, strings.Join(done, ", "), strings.Join(rest, ","), opts.file)
+		// start is safe; the playlist step is never repeated. The storefront
+		// is repeated so the re-run matches the same song IDs.
+		cmd := "bootleg -to " + strings.Join(rest, ",")
+		if opts.storefront != "" {
+			cmd += " -storefront " + opts.storefront
+		}
+		return fmt.Errorf("%w (already done: %s; to finish, run: %s %s)",
+			err, strings.Join(done, ", "), cmd, opts.file)
 	}
 
 	if opts.to.playlist {
