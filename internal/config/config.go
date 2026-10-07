@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"unicode"
 )
 
 // Environment variable names.
@@ -43,9 +44,9 @@ func FromEnv() (Config, error) {
 		UserToken:  strings.TrimSpace(os.Getenv(EnvUserToken)),
 		Storefront: strings.TrimSpace(os.Getenv(EnvStorefront)),
 	}
-	// Users often paste the whole header value; accept it with or without
-	// the "Bearer " prefix.
-	c.DevToken = strings.TrimPrefix(c.DevToken, "Bearer ")
+	// Users often paste the whole header value, sometimes losing the space
+	// after "Bearer" on the way.
+	c.DevToken = stripBearer(c.DevToken)
 
 	for _, v := range []struct{ name, val string }{
 		{EnvDevToken, c.DevToken},
@@ -59,6 +60,17 @@ func FromEnv() (Config, error) {
 		c.Storefront = DefaultStorefront
 	}
 	return c, nil
+}
+
+// stripBearer removes a pasted "Bearer" prefix in any case, followed by any
+// whitespace or none ("Bearer eyJ…", "BearereyJ…"). A developer token is a
+// JWT, which always starts with "eyJ", so the word is never part of it.
+func stripBearer(s string) string {
+	const prefix = "bearer"
+	if len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+		return strings.TrimLeftFunc(s[len(prefix):], unicode.IsSpace)
+	}
+	return s
 }
 
 // String redacts the tokens, so printing a Config with %v or %s is safe.
