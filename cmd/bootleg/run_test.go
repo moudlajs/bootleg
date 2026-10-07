@@ -30,6 +30,8 @@ type fakeAPI struct {
 	created  []string // track IDs from the last create request
 	appends  int
 	appended []string // track IDs from the last append request
+	library  []string // song IDs added to the library, in request order
+	favs     []string // song IDs favourited, in request order
 }
 
 // catalog maps a search term to the songs the fake returns for it.
@@ -53,6 +55,18 @@ func (f *fakeAPI) handler(w http.ResponseWriter, r *http.Request) {
 			}})
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": map[string]any{"songs": map[string]any{"data": data}}})
+
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/me/library":
+		f.mu.Lock()
+		f.library = append(f.library, strings.Split(r.URL.Query().Get("ids[songs]"), ",")...)
+		f.mu.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+
+	case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/v1/me/ratings/songs/"):
+		f.mu.Lock()
+		f.favs = append(f.favs, strings.TrimPrefix(r.URL.Path, "/v1/me/ratings/songs/"))
+		f.mu.Unlock()
+		_, _ = w.Write([]byte(`{"data":[]}`))
 
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/tracks"):
 		if r.URL.Path != "/v1/me/library/playlists/p.existing/tracks" {
@@ -143,7 +157,7 @@ func TestRunPartial(t *testing.T) {
 	f, api, path := setup(t, input)
 	var out bytes.Buffer
 
-	err := run(context.Background(), options{name: "Mix", storefront: "cz", file: path}, api, &out, discardLogger())
+	err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", storefront: "cz", file: path}, api, &out, discardLogger())
 	if !errors.Is(err, errPartial) {
 		t.Fatalf("run() error = %v, want errPartial", err)
 	}
@@ -178,7 +192,7 @@ func TestRunAllMatchedRemovesStaleReport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := run(context.Background(), options{name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
+	if err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 	if _, err := os.Stat(report); !errors.Is(err, fs.ErrNotExist) {
@@ -195,7 +209,7 @@ func TestRunStaleReportRemovalFailureIsNotFatal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := run(context.Background(), options{name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
+	if err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
 		t.Fatalf("run() error = %v, want nil", err)
 	}
 	if f.posts != 1 {
@@ -213,7 +227,7 @@ func TestRunReportWriteFailureIsNotFatal(t *testing.T) {
 	}
 	var out bytes.Buffer
 
-	err := run(context.Background(), options{name: "Mix", file: path}, api, &out, discardLogger())
+	err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, &out, discardLogger())
 	if !errors.Is(err, errPartial) {
 		t.Fatalf("run() error = %v, want errPartial", err)
 	}
@@ -244,7 +258,7 @@ func TestRunCreateFailureStillSummarises(t *testing.T) {
 	}
 	var out bytes.Buffer
 
-	err := run(context.Background(), options{name: "Mix", file: path}, api, &out, discardLogger())
+	err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, &out, discardLogger())
 	if err == nil || errors.Is(err, errPartial) {
 		t.Fatalf("run() error = %v, want the create failure", err)
 	}
@@ -266,7 +280,7 @@ func TestRunPartialNeverOverwritesInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := run(context.Background(), options{name: "Mix", file: path}, api, io.Discard, discardLogger())
+	err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger())
 	if !errors.Is(err, errPartial) {
 		t.Fatalf("run() error = %v, want errPartial", err)
 	}
@@ -286,7 +300,7 @@ func TestRunAllMatchedKeepsReportThatIsTheInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := run(context.Background(), options{name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
+	if err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -318,7 +332,7 @@ func TestRunNothingMatched(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	err := run(context.Background(), options{name: "Mix", file: path}, api, &out, discardLogger())
+	err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, &out, discardLogger())
 	if !errors.Is(err, errNothingMatched) {
 		t.Fatalf("run() error = %v, want errNothingMatched", err)
 	}
@@ -366,6 +380,9 @@ func TestCLIFlags(t *testing.T) {
 		{"two files", []string{"-name", "x", "a.txt", "b.txt"}, exitInput, ""},
 		{"no name without dry-run", []string{"a.txt"}, exitInput, ""},
 		{"name and playlist-id", []string{"-name", "x", "-playlist-id", "p.1", "a.txt"}, exitInput, ""},
+		{"unknown -to", []string{"-to", "lib,cloud", "a.txt"}, exitInput, ""},
+		{"-name without pl", []string{"-to", "lib", "-name", "x", "a.txt"}, exitInput, ""},
+		{"-to pl without a playlist", []string{"-to", "pl,fav", "a.txt"}, exitInput, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -559,7 +576,7 @@ func TestRunCancelledMidRun(t *testing.T) {
 	}
 
 	start := time.Now()
-	err := run(ctx, options{name: "Mix", delay: time.Hour, file: path}, api, io.Discard, discardLogger())
+	err := run(ctx, options{to: targets{playlist: true}, name: "Mix", delay: time.Hour, file: path}, api, io.Discard, discardLogger())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("run() error = %v, want context.Canceled", err)
 	}
@@ -603,7 +620,7 @@ func TestRunAppendsInsteadOfCreating(t *testing.T) {
 	f, api, path := setup(t, input)
 	var out bytes.Buffer
 
-	err := run(context.Background(), options{playlistID: "p.existing", file: path}, api, &out, discardLogger())
+	err := run(context.Background(), options{to: targets{playlist: true}, playlistID: "p.existing", file: path}, api, &out, discardLogger())
 	if !errors.Is(err, errPartial) { // "Nobody - Nothing" has no match
 		t.Fatalf("run() error = %v, want errPartial", err)
 	}
@@ -647,7 +664,7 @@ func TestRunInterruptedDuringCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := run(ctx, options{name: "Mix", file: path}, api, io.Discard, discardLogger())
+	err := run(ctx, options{to: targets{playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger())
 	if !errors.Is(err, errWriteInterrupted) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("run() error = %v, want errWriteInterrupted wrapping context.Canceled", err)
 	}
@@ -678,5 +695,111 @@ func TestResolveVersion(t *testing.T) {
 				t.Errorf("resolveVersion() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseTargets(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    targets
+		wantErr bool
+	}{
+		{"pl", targets{playlist: true}, false},
+		{"lib", targets{library: true}, false},
+		{"fav", targets{favorites: true}, false},
+		{"lib,fav", targets{library: true, favorites: true}, false},
+		{" FAV , Library ,pl,pl", targets{playlist: true, library: true, favorites: true}, false},
+		{"favourites", targets{favorites: true}, false},
+		{"lib,", targets{}, true}, // trailing comma: empty entry
+		{"cloud", targets{}, true},
+	}
+	for _, tt := range tests {
+		got, err := parseTargets(tt.in)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("parseTargets(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
+			continue
+		}
+		if !tt.wantErr && got != tt.want {
+			t.Errorf("parseTargets(%q) = %+v, want %+v", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestRunLibraryAndFavorites(t *testing.T) {
+	f, api, path := setup(t, input)
+	var out bytes.Buffer
+
+	opts := options{to: targets{library: true, favorites: true}, file: path}
+	err := run(context.Background(), opts, api, &out, discardLogger())
+	if !errors.Is(err, errPartial) { // "Nobody - Nothing" has no match
+		t.Fatalf("run() error = %v, want errPartial", err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.posts != 0 || f.appends != 0 {
+		t.Errorf("touched a playlist: %d creates, %d appends", f.posts, f.appends)
+	}
+	if strings.Join(f.library, ",") != "b1,p1" {
+		t.Errorf("library = %v, want [b1 p1]", f.library)
+	}
+	if strings.Join(f.favs, ",") != "b1,p1" {
+		t.Errorf("favourites = %v, want [b1 p1]", f.favs)
+	}
+	for _, want := range []string{"Added 2 songs to your Library.", "Favourited 2 songs"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestRunAllThreeTargets(t *testing.T) {
+	f, api, path := setup(t, "Portishead - Glory Box\n")
+	opts := options{to: targets{playlist: true, library: true, favorites: true}, name: "Mix", file: path}
+	if err := run(context.Background(), opts, api, io.Discard, discardLogger()); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.posts != 1 || len(f.library) != 1 || len(f.favs) != 1 {
+		t.Errorf("creates %d, library %v, favs %v; want one of each", f.posts, f.library, f.favs)
+	}
+}
+
+// A failure part-way through favouriting reports how far it got, and keeps
+// the error class (here auth) for the exit code.
+func TestRunFavoriteFailsPartWay(t *testing.T) {
+	f := &fakeAPI{}
+	var favCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && favCalls.Add(1) == 2 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		f.handler(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	api := applemusic.New(srv.Client(), srv.URL, "fake-dev", "fake-user")
+	path := filepath.Join(t.TempDir(), "songs.txt")
+	if err := os.WriteFile(path, []byte("Björk - Army of Me\nPortishead - Glory Box\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := run(context.Background(), options{to: targets{favorites: true}, file: path}, api, io.Discard, discardLogger())
+	if !errors.Is(err, applemusic.ErrUnauthorized) || !strings.Contains(err.Error(), "favourite 2 of 2") {
+		t.Fatalf("run() error = %v, want ErrUnauthorized at favourite 2 of 2", err)
+	}
+	if code := exitCode(err); code != exitAuth {
+		t.Errorf("exit code = %d, want %d", code, exitAuth)
+	}
+}
+
+func TestRunWithoutTargetsRefuses(t *testing.T) {
+	f, api, path := setup(t, "Portishead - Glory Box\n")
+	err := run(context.Background(), options{name: "Mix", file: path}, api, io.Discard, discardLogger())
+	if err == nil || !strings.Contains(err.Error(), "no destination") {
+		t.Fatalf("run() error = %v, want a no-destination error", err)
+	}
+	if f.posts != 0 {
+		t.Errorf("sent %d POST requests, want 0", f.posts)
 	}
 }

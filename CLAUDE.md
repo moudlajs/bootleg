@@ -6,7 +6,7 @@ to you too, and it is how this repo guarantees quality.
 ## What this repository is
 
 `bootleg`: a Go CLI that reads `Artist - Title` lines from a text file and
-creates an Apple Music library playlist. It uses the Apple Music web player's
+sends the songs to a playlist, the Library and/or Favourite Songs (`-to`). It uses the Apple Music web player's
 tokens and private `amp-api.music.apple.com` endpoints, not MusicKit, so no
 paid developer account is needed. The user supplies the tokens.
 
@@ -37,7 +37,7 @@ cmd/bootleg/main.go   flags, signal.NotifyContext, build deps, call run(), map e
 internal/config         env vars + tiny .env loader (only fills unset vars)
 internal/parser         input file → []Query{Artist, Title, Raw}
 internal/matcher        PURE: normalise, reject karaoke/tribute, score, pick best
-internal/applemusic     HTTP client: Search, CreatePlaylist, AddTracks
+internal/applemusic     HTTP client: Search, CreatePlaylist, AddTracks, AddToLibrary, Favorite
 ```
 
 - `main` stays thin: parse flags, build dependencies, call
@@ -60,13 +60,21 @@ internal/applemusic     HTTP client: Search, CreatePlaylist, AddTracks
 - Create: `POST /v1/me/library/playlists` with
   `{"attributes":{"name":...},"relationships":{"tracks":{"data":[{"id":...,"type":"songs"}]}}}`
 - Append: `POST /v1/me/library/playlists/{id}/tracks` with `{"data":[...]}`
+- Library: `POST /v1/me/library?ids[songs]=a,b` → 202, applied within seconds.
+  Undo: `DELETE /v1/me/library/songs/{libraryId}` → 204.
+- Favourite: `PUT /v1/me/ratings/songs/{id}` with
+  `{"type":"rating","attributes":{"value":1}}` → 200. The song tops the
+  automatic "Favourite Songs" playlist and joins the Library, even if it
+  wasn't there. Undo: `DELETE` the same path → 204. (`/v1/me/favorites`
+  exists but isn't what the app's star uses; don't switch to it.)
+- All of the above verified against the real API on 2026-10-08.
 - 401/403 means the web-player tokens expired (exit 2).
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
-| 0 | every line matched, playlist created/updated |
+| 0 | every line matched and went to every `-to` destination |
 | 1 | partial: some lines unmatched (listed in `unmatched.txt`; in `-dry-run` only printed), or any other failure: 429, 5xx, network |
 | 2 | auth: tokens missing, expired or rejected |
 | 3 | input: bad flags, unreadable file, nothing to import, `-playlist-id` not in the library |

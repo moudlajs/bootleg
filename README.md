@@ -106,16 +106,39 @@ steps above; usually only `AM_USER_TOKEN` needs replacing.
 ## Usage
 
 ```text
-bootleg -name "Playlist name" [-storefront cz] [-dry-run] [-playlist-id ID] [-delay 500ms] [-v] <file.txt>
+bootleg [-to pl,lib,fav] [-name "Playlist" | -playlist-id ID] [-storefront cz] [-dry-run] [-delay 500ms] [-v] <file.txt>
 ```
+
+### Where the songs go: `-to`
+
+Apple Music has three places to collect songs. `-to` picks one or more,
+comma-separated:
+
+| `-to` | Destination | Notes |
+|---|---|---|
+| `pl` (default) | a **playlist** | needs `-name` (create) or `-playlist-id` (append) |
+| `lib` | your **Library** ("Songs") | no playlist, just your collection |
+| `fav` | **Favourite Songs** (the ⭐) | starring a song also puts it in your Library, as in the app |
+
+```sh
+bootleg -name "Road trip" roadtrip.txt        # playlist (default)
+bootleg -to lib roadtrip.txt                  # Library only
+bootleg -to fav roadtrip.txt                  # star them
+bootleg -to pl,fav -name "Road trip" x.txt    # playlist and star them
+```
+
+Long forms work too (`playlist`, `library`, `favorites`/`favourites`).
+Destinations are written in the order playlist, Library, favourites;
+favouriting is one request per song, paced by `-delay`.
 
 | Flag | Meaning |
 |---|---|
-| `-name` | Name of the playlist to create. |
-| `-playlist-id` | Append to this existing library playlist instead of creating one. Use either this or `-name`. |
+| `-to` | Destinations: `pl`, `lib`, `fav`, or a comma list. Default `pl`. |
+| `-name` | Name of the playlist to create (with `-to pl`). |
+| `-playlist-id` | Append to this existing library playlist instead of creating one (with `-to pl`). Use either this or `-name`. |
 | `-dry-run` | Search and show the matches, create nothing. |
 | `-storefront` | Catalog country, e.g. `cz`. Default `$AM_STOREFRONT`, else `us`. |
-| `-delay` | Pause between searches. Default `500ms`. Raise it if you hit rate limits. |
+| `-delay` | Pause between requests (searches, favourites). Default `500ms`. Raise it if you hit rate limits. |
 | `-v` | Debug logging on stderr. |
 | `-version` | Print the version. |
 
@@ -185,10 +208,10 @@ so, and you should check your library.
 
 | Code | Meaning | What to do |
 |---|---|---|
-| 0 | Every line matched; the playlist was created or updated. | Nothing. |
+| 0 | Every line matched and went to every destination in `-to`. | Nothing. |
 | 1 | Partial: some lines didn't match (listed in the summary and in `unmatched.txt`). Also used for other failures: rate limiting, server or network errors, Ctrl+C. | Fix `unmatched.txt` and re-run with `-playlist-id`, or read the error. |
 | 2 | Auth: a token is missing, expired or rejected. | Refresh the tokens (see [Token setup](#token-setup)). |
-| 3 | Input: bad flags, a missing or empty file, nothing matched at all, or a `-playlist-id` that isn't in your library. | Check the command and the file. |
+| 3 | Input: bad flags (including an unknown `-to`, or `-name` without `pl`), a missing or empty file, nothing matched at all, or a `-playlist-id` that isn't in your library. | Check the command and the file. |
 
 `unmatched.txt` is written next to the input file. It is never written in
 `-dry-run`, and a run that matches everything removes a stale one. If the input
