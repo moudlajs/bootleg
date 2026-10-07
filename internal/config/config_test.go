@@ -210,3 +210,31 @@ func mustJSON(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+func TestStripBearer(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"Bearer eyJabc", "eyJabc"},
+		{"BearereyJabc", "eyJabc"}, // space lost while copying
+		{"bearer\teyJabc", "eyJabc"},
+		{"BEARER  eyJabc", "eyJabc"},
+		{"Bearer\u00a0eyJabc", "eyJabc"}, // non-breaking space from a web page
+		{"eyJabc", "eyJabc"},
+		{"Bear", "Bear"},
+		{"Bearer", ""}, // then FromEnv reports the token as missing
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := stripBearer(tt.in); got != tt.want {
+			t.Errorf("stripBearer(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestFromEnvBearerOnlyIsMissing(t *testing.T) {
+	unsetEnv(t, EnvStorefront)
+	t.Setenv(EnvDevToken, "Bearer ")
+	t.Setenv(EnvUserToken, "user")
+	if _, err := FromEnv(); !errors.Is(err, ErrMissingToken) {
+		t.Fatalf("FromEnv() error = %v, want ErrMissingToken", err)
+	}
+}
