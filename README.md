@@ -54,7 +54,7 @@ tokens; the tool never logs in, scrapes or obtains them itself.
 
 ## Install
 
-With Go 1.24 or newer:
+With Go 1.26 or newer:
 
 ```sh
 go install github.com/moudlajs/bootleg/cmd/bootleg@latest

@@ -49,7 +49,7 @@ Scopes: `parser`, `matcher`, `applemusic`, `config`, `cli`, `release`.
 ## What CI enforces
 
 - `gofmt`, `go vet`, `golangci-lint` (see `.golangci.yml`), zero findings
-- `go test -race` on Go 1.24 and 1.25, `go build`
+- `go test -race` on Go 1.26 and 1.27 (the releases Go still supports), `go build`
 - `.goreleaser.yml` is valid
 - PR title and branch name conventions
 - Claude review ran (on non-draft PRs)
