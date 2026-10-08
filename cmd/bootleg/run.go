@@ -98,7 +98,7 @@ func printWritten(out io.Writer, w importer.Written, name string) {
 		fmt.Fprintf(out, "Added %d songs to your Library.\n", w.Library)
 	}
 	if w.Favorites > 0 {
-		fmt.Fprintf(out, "Favourited %d songs (Favourite Songs and Library).\n", w.Favorites)
+		fmt.Fprintf(out, "Favourited %d songs (Favourite Songs and Library). Your devices may take a few minutes to show them.\n", w.Favorites)
 	}
 }
 
