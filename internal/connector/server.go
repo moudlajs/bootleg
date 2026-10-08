@@ -45,7 +45,11 @@ func NewServer(svc *Service, version string) *sdk.Server {
 		Description: "Look songs up in the Apple Music catalog without changing anything: for each line, the matched " +
 			"artist, title and ID, or no match. Karaoke and tribute versions are skipped. Use before add_songs.",
 		Annotations: &sdk.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(true)},
-	}, handler(svc.Log, "preview_songs", svc.preview))
+	}, handler(svc.Log, "preview_songs", func(ctx context.Context, in SongsInput) (PreviewOutput, error) {
+		out, err := svc.preview(ctx, in)
+		out.Server = serverInfo(version)
+		return out, err
+	}))
 
 	sdk.AddTool(s, &sdk.Tool{
 		Name: "add_songs",
@@ -59,7 +63,11 @@ func NewServer(svc *Service, version string) *sdk.Server {
 		Name:        "list_playlists",
 		Description: "The playlists in the user's Apple Music library, with their IDs, so songs can be added to an existing one.",
 		Annotations: &sdk.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(true)},
-	}, handler(svc.Log, "list_playlists", svc.playlists))
+	}, handler(svc.Log, "list_playlists", func(ctx context.Context, in struct{}) (PlaylistsOutput, error) {
+		out, err := svc.playlists(ctx, in)
+		out.Server = serverInfo(version)
+		return out, err
+	}))
 
 	return s
 }
@@ -97,6 +105,7 @@ type PreviewOutput struct {
 	Matched   []Match     `json:"matched"`
 	Unmatched []Unmatched `json:"unmatched"`
 	Skipped   int         `json:"skipped" jsonschema:"blank and comment lines"`
+	Server    ServerInfo  `json:"server"`
 }
 
 // PlaylistRef names a playlist.
@@ -124,6 +133,25 @@ const favouritesDelay = "Apple Music has the favourites already, but Favourite S
 // PlaylistsOutput is list_playlists' result.
 type PlaylistsOutput struct {
 	Playlists []PlaylistInfo `json:"playlists"`
+	Server    ServerInfo     `json:"server"`
+}
+
+// ServerInfo lets a chat notice it has an outdated tool list (claude.ai caches it until reconnect).
+type ServerInfo struct {
+	Version string   `json:"version"`
+	Tools   []string `json:"tools" jsonschema:"every tool this server has"`
+	Note    string   `json:"note"`
+}
+
+// toolNames are every tool NewServer registers; a test keeps it in step.
+var toolNames = []string{"preview_songs", "add_songs", "list_playlists"}
+
+const reconnectNote = "If any of these tools are missing from your tool list, bootleg was updated after this " +
+	"connector's tools were loaded: tell the user to reconnect the bootleg connector (claude.ai Settings > " +
+	"Connectors) and start a new chat. Don't improvise what a missing tool would do."
+
+func serverInfo(version string) ServerInfo {
+	return ServerInfo{Version: version, Tools: toolNames, Note: reconnectNote}
 }
 
 // PlaylistInfo is one library playlist.

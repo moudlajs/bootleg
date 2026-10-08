@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -307,5 +308,40 @@ func TestNotFoundWording(t *testing.T) {
 	}
 	if got := people(applemusic.ErrNotFound); strings.Contains(got, "playlist") {
 		t.Errorf("people(ErrNotFound) = %q, should not mention playlists", got)
+	}
+}
+
+func TestToolNamesMatchRegisteredTools(t *testing.T) {
+	cs := connect(t, newService(t, &fakeApple{}))
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, tl := range res.Tools {
+		got = append(got, tl.Name)
+	}
+	slices.Sort(got)
+	want := slices.Clone(toolNames)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("registered %v, toolNames %v", got, want)
+	}
+}
+
+func TestServerInfoInFirstTools(t *testing.T) {
+	cs := connect(t, newService(t, &fakeApple{}))
+	var p PreviewOutput
+	if e := call(t, cs, "preview_songs", map[string]any{"songs": songs}, &p); e != "" {
+		t.Fatalf("preview error: %s", e)
+	}
+	var l PlaylistsOutput
+	if e := call(t, cs, "list_playlists", map[string]any{}, &l); e != "" {
+		t.Fatalf("list_playlists error: %s", e)
+	}
+	for name, info := range map[string]ServerInfo{"preview_songs": p.Server, "list_playlists": l.Server} {
+		if info.Version != "test" || len(info.Tools) != len(toolNames) || !strings.Contains(info.Note, "reconnect") {
+			t.Errorf("%s server = %+v", name, info)
+		}
 	}
 }
