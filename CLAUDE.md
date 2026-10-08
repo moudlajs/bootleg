@@ -107,6 +107,29 @@ anyone out. Sign-in attempts are rate limited. Rotating the signing key
 signs every client out. Always test sign-in in a real browser: in
 waiverwatch, curl-only tests missed a CSP `form-action` bug.
 
+## Hosting (Cloud Run)
+
+The connector runs as Cloud Run service `bootleg` in the waiverwatch
+project (`waiverwatch-509716`, `europe-west1`), so that project's budget
+alert and billing kill switch cover it. URL:
+`https://bootleg-1006894723977.europe-west1.run.app/mcp`.
+
+- `deploy/setup.sh` (re-runnable): Artifact Registry `bootleg`, runtime SA
+  `bootleg-run` (reads only its secrets), deploy SA `bootleg-deploy`,
+  Workload Identity provider `github-bootleg` (this repo's main and `v*`
+  tags only), the secrets, and the `GCP_*`/`BOOTLEG_BASE_URL` repo vars.
+- Secrets: `bootleg-signing-key` (generated once; rotating signs everyone
+  out), `bootleg-passphrase` (`deploy/passphrase.sh`: clipboard + macOS
+  Keychain, never printed), `bootleg-am-*` (`deploy/tokens.sh` from `.env`;
+  run it when Apple rejects the tokens; it rolls a new revision).
+- Release tags deploy: `release.yml` → `deploy.yml` (also runnable by hand
+  for a tag). Smoke test: `/health` = `ok <tag>`, `/mcp` 401 signed out,
+  discovery names `$BOOTLEG_BASE_URL/mcp`.
+- `.dockerignore` keeps `.env` out of the image; never remove that line.
+- `set -o pipefail` + `tr … | head` kills the script with SIGPIPE: guard
+  the producer (`(tr … || true) | head`). And check secrets are non-empty
+  before comparing them.
+
 ## Things that have already bitten
 
 - **A skipped required check counts as passing.** A push and `gh pr ready`

@@ -4,12 +4,13 @@ on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # publish the GitHub release
     steps:
       - uses: actions/checkout@v7
         with:
@@ -30,3 +31,14 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The connector (bootleg-mcp) goes to Cloud Run once the CLI release is
+  # published. deploy.yml can also be run by hand to (re)deploy any tag.
+  deploy:
+    needs: release
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: no keys
+    uses: ./.github/workflows/deploy.yml
+    with:
+      tag: ${{ github.ref_name }}
