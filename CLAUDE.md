@@ -54,6 +54,9 @@ cmd/bootleg-mcp/main.go the connector: stdio locally, HTTP /mcp + /health when P
   4 minutes, paces Apple at 300 ms, and refuses to create a playlist whose
   name already exists (chats retry; it points at `playlist_id` instead).
   Screenshots work because Claude transcribes them into lines first.
+- claude.ai caches tool lists until reconnect: `preview_songs` and
+  `list_playlists` report version + `toolNames` (a test keeps it in step),
+  so a stale chat tells the user to reconnect. Add new tools to `toolNames`.
 
 - The CLI (and the connector) are thin shells over `internal/importer`:
   they read input, call `Resolve` and `Write`, and word the results. Files

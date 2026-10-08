@@ -34,6 +34,12 @@ one song per line first.
   them more slowly than playlists). Apple has them right away; adding them
   again changes nothing.
 
+## After an update
+
+Claude keeps a connector's tool list until you reconnect it. Ordinary
+releases don't need that; when tools change, Claude notices and asks you to
+reconnect (Settings → Connectors) and start a new chat.
+
 ## Tools
 
 | Tool | Does |
