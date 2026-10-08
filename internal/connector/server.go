@@ -190,6 +190,9 @@ func (s *Service) add(ctx context.Context, in AddInput) (AddOutput, error) {
 			return out, fmt.Errorf("%s. Already done: %s. To finish, call add_songs again with the same songs and to=[%s]",
 				people(inc.Err), strings.Join(inc.Done, ", "), strings.Join(inc.Rest, ", "))
 		}
+		if errors.Is(err, applemusic.ErrNotFound) && opts.PlaylistID != "" {
+			return out, fmt.Errorf("playlist %s isn't in the library; use list_playlists to find the right playlist_id", opts.PlaylistID)
+		}
 		return out, errors.New(people(err))
 	}
 	return out, nil
@@ -273,7 +276,7 @@ func people(err error) string {
 	case errors.Is(err, applemusic.ErrRateLimited):
 		return "Apple Music is rate limiting requests; wait a minute, then try again with fewer songs"
 	case errors.Is(err, applemusic.ErrNotFound):
-		return "that playlist isn't in the library; use list_playlists to find the right playlist_id"
+		return "Apple Music answered \"not found\""
 	case errors.Is(err, context.DeadlineExceeded):
 		return "this took too long and was stopped; try fewer songs per call"
 	case errors.Is(err, importer.ErrWriteInterrupted):

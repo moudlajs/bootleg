@@ -139,3 +139,13 @@ func TestListPlaylistsIgnoresForeignNext(t *testing.T) {
 		t.Errorf("made %d requests, want 1", calls)
 	}
 }
+
+// Hitting the page cap is an error, not a short list that looks complete.
+func TestListPlaylistsTooMany(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"next":"/v1/me/library/playlists?offset=1","data":[{"id":"p.x","attributes":{"name":"x"}}]}`))
+	})
+	if _, err := c.ListPlaylists(context.Background()); err == nil || !strings.Contains(err.Error(), "more than") {
+		t.Fatalf("ListPlaylists() error = %v, want a too-many error", err)
+	}
+}

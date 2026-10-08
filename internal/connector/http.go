@@ -13,8 +13,8 @@ import (
 	"github.com/moudlajs/bootleg/internal/auth"
 )
 
-// Hosted rate limit per instance: plenty for one person's Claude, little
-// for anyone else (who can't sign in anyway).
+// Hosted rate limit per instance for signed-in requests: plenty for one
+// person's Claude.
 const (
 	requestsPerSecond = 5
 	requestBurst      = 20
@@ -26,28 +26,31 @@ const (
 // signIn, /mcp requires its OAuth access token and its endpoints are served
 // too.
 func HTTPHandler(s *sdk.Server, version string, signIn *auth.Server) http.Handler {
-	var mcpHandler http.Handler = sdk.NewStreamableHTTPHandler(
+	mcpHandler := sdk.NewStreamableHTTPHandler(
 		func(*http.Request) *sdk.Server { return s },
 		&sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true, Logger: slog.Default()},
 	)
-	mux := http.NewServeMux()
-	if signIn != nil {
-		signIn.Routes(mux)
-		mcpHandler = signIn.Protect(mcpHandler)
-	}
+	// The limit sits inside sign-in, so only signed-in requests spend it:
+	// strangers get 401 and can't use up the owner's budget.
 	limiter := rate.NewLimiter(requestsPerSecond, requestBurst)
-
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = fmt.Fprintf(w, "ok %s\n", version)
-	})
-	mux.Handle("/mcp", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var h http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.Allow() {
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, "rate limited", http.StatusTooManyRequests)
 			return
 		}
 		mcpHandler.ServeHTTP(w, r)
-	}))
+	})
+
+	mux := http.NewServeMux()
+	if signIn != nil {
+		signIn.Routes(mux)
+		h = signIn.Protect(h)
+	}
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, "ok %s\n", version)
+	})
+	mux.Handle("/mcp", h)
 	return mux
 }
 

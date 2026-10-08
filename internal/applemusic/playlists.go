@@ -2,12 +2,14 @@ package applemusic
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 )
 
 // maxPlaylistPages bounds ListPlaylists: 20 pages of 100 is more playlists
-// than anyone keeps, and a loop that never ends is worse than a short list.
+// than anyone keeps. Past it ListPlaylists fails rather than return a list
+// that looks complete but isn't (the duplicate-name check relies on it).
 const maxPlaylistPages = 20
 
 // Playlist is a playlist in the user's library.
@@ -51,6 +53,9 @@ func (c *Client) ListPlaylists(ctx context.Context) ([]Playlist, error) {
 		// next is a path with its own query, e.g.
 		// /v1/me/library/playlists?offset=100.
 		path, q = splitNext(resp.Next)
+	}
+	if path != "" {
+		return nil, fmt.Errorf("more than %d playlists; not reading further", maxPlaylistPages*100)
 	}
 	return out, nil
 }

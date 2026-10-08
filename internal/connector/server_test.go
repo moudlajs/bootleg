@@ -258,6 +258,19 @@ func TestHTTPHandler(t *testing.T) {
 		t.Errorf("/health = %d %q", resp.StatusCode, body)
 	}
 
+	// Strangers can't drain the owner's rate limit: more unauthenticated
+	// requests than the burst all get 401, never 429.
+	for i := 0; i < requestBurst+10; i++ {
+		resp, err := http.Post(srv.URL+"/mcp", "application/json", strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated request %d = %d, want 401", i, resp.StatusCode)
+		}
+	}
+
 	// Without a token, /mcp refuses and points at the sign-in metadata.
 	resp, err = http.Post(srv.URL+"/mcp", "application/json", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
 	if err != nil {
@@ -266,5 +279,21 @@ func TestHTTPHandler(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized || !strings.Contains(resp.Header.Get("WWW-Authenticate"), "resource_metadata") {
 		t.Errorf("/mcp without a token = %d, WWW-Authenticate %q", resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
+	}
+}
+
+// add_songs to a playlist ID that isn't in the library says so; elsewhere a
+// 404 isn't blamed on a playlist.
+func TestNotFoundWording(t *testing.T) {
+	f := &fakeApple{}
+	svc := newService(t, f)
+	e := call(t, connect(t, svc), "add_songs", map[string]any{
+		"songs": songs, "to": []string{"pl"}, "playlist_id": "p.gone",
+	}, &AddOutput{})
+	if !strings.Contains(e, "p.gone isn't in the library") {
+		t.Errorf("error = %q", e)
+	}
+	if got := people(applemusic.ErrNotFound); strings.Contains(got, "playlist") {
+		t.Errorf("people(ErrNotFound) = %q, should not mention playlists", got)
 	}
 }
