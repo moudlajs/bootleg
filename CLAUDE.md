@@ -21,8 +21,10 @@ idiomatic, boring Go, and explain non-obvious idioms in a short comment.
    real, or commits. Log that a header was set, never its value.
 2. **Keep it small.** Sequential requests are intentional. No goroutine
    pools, no CLI framework, no config framework, no interfaces with one
-   implementation, no plugin systems. Standard library only in the binary,
-   plus `golang.org/x/text` for diacritic folding.
+   implementation, no plugin systems. The `bootleg` CLI is standard library
+   only, plus `golang.org/x/text` for diacritic folding. The connector may
+   also use the MCP Go SDK and `golang.org/x/time` (sign-in rate limit);
+   ask before adding anything else.
 3. **No attribution lines.** No `Co-Authored-By: Claude` trailer and no
    "Generated with Claude Code" footer in commits (including PR-branch
    commits: the squash merge copies their trailers into `main`), PR bodies,
@@ -40,6 +42,7 @@ internal/parser         input file → []Query{Artist, Title, Raw}
 internal/matcher        PURE: normalise, reject karaoke/tribute, score, pick best
 internal/applemusic     HTTP client: Search, CreatePlaylist, AddTracks, AddToLibrary, Favorite
 internal/importer       the engine: Resolve (search + match), Write (playlist/library/favourites); no printing, no files
+internal/auth           owner-only OAuth 2.1 sign-in for the hosted connector (passphrase; Claude's client IDs only)
 ```
 
 - The CLI (and the connector) are thin shells over `internal/importer`:
@@ -84,6 +87,18 @@ internal/importer       the engine: Resolve (search + match), Write (playlist/li
 | 1 | partial: some lines unmatched (listed in `unmatched.txt`; in `-dry-run` only printed), or any other failure: 429, 5xx, network |
 | 2 | auth: tokens missing, expired or rejected |
 | 3 | input: bad flags, unreadable file, nothing to import, `-playlist-id` not in the library |
+
+## Hosted connector sign-in
+
+The connector holds the owner's Apple Music tokens, so it is **owner-only
+and fails closed**. `internal/auth` was ported from waiverwatch (c044bbd,
+which ran in production): Claude identifies itself with a Client ID
+Metadata Document and only Claude's two client IDs are accepted; the owner
+types a passphrase (≥ 12 characters) once per client; codes and tokens are
+HMAC-signed and stateless (1 h access, 90 d refresh), so restarts don't sign
+anyone out. Sign-in attempts are rate limited. Rotating the signing key
+signs every client out. Always test sign-in in a real browser: in
+waiverwatch, curl-only tests missed a CSP `form-action` bug.
 
 ## Things that have already bitten
 
