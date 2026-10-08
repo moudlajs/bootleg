@@ -232,7 +232,7 @@ every request needs your sign-in.
 **Connect it (once, on claude.ai or in the Claude app):**
 
 1. Settings → Connectors → **Add custom connector**.
-2. URL: `https://bootleg-1006894723977.europe-west1.run.app/mcp`
+2. URL: `https://bootleg-697142671706.europe-west1.run.app/mcp`
 3. Connect. A bootleg sign-in page opens: enter the **passphrase** (see
    below). Connectors added on claude.ai also appear in the phone app.
 
