@@ -1,3 +1,4 @@
+# Assigns each new unassigned issue to the sole maintainer.
 name: Assign
 
 on:
@@ -9,7 +10,6 @@ permissions:
 
 jobs:
   assign:
-    # One maintainer, so an unassigned issue is always an oversight.
     if: github.event.issue.assignees[0] == null
     runs-on: ubuntu-latest
     steps:

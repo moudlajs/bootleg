@@ -16,8 +16,6 @@ type Song struct {
 	Album  string
 }
 
-// searchResponse mirrors only the parts of the API response we use. Fields
-// not listed here are ignored by encoding/json.
 type searchResponse struct {
 	Results struct {
 		Songs struct {
@@ -33,9 +31,7 @@ type searchResponse struct {
 	} `json:"results"`
 }
 
-// Search looks up term in the catalog of storefront (e.g. "us", "cz") and
-// returns up to five songs in the API's relevance order. No results is an
-// empty slice and a nil error.
+// Search returns up to five catalog songs for term in storefront (e.g. "cz"), in relevance order.
 func (c *Client) Search(ctx context.Context, storefront, term string) ([]Song, error) {
 	path := "/v1/catalog/" + url.PathEscape(storefront) + "/search"
 	q := url.Values{
@@ -49,7 +45,6 @@ func (c *Client) Search(ctx context.Context, storefront, term string) ([]Song, e
 		return nil, err
 	}
 
-	// make with length 0 and a capacity avoids re-allocating while appending.
 	songs := make([]Song, 0, len(resp.Results.Songs.Data))
 	for _, d := range resp.Results.Songs.Data {
 		songs = append(songs, Song{

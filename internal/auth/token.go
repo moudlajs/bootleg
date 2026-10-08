@@ -10,16 +10,14 @@ import (
 	"time"
 )
 
-// Token kinds. A token of one kind is never accepted as another.
+// A token of one kind is never accepted as another.
 const (
 	kindCode    = "code"
 	kindAccess  = "access"
 	kindRefresh = "refresh"
 )
 
-// claims is what a signed token carries. Tokens are self-contained so that
-// nothing has to be stored: Cloud Run instances come and go, and a restart
-// must not sign the owner out.
+// claims are self-contained so nothing is stored and a restart doesn't sign the owner out.
 type claims struct {
 	Kind        string `json:"k"`
 	ClientID    string `json:"c"`
@@ -32,8 +30,7 @@ type claims struct {
 
 var errBadToken = errors.New("invalid token")
 
-// signer makes and checks HMAC-SHA256 signed tokens: base64url(json) "."
-// base64url(mac). Opaque to clients; only this server reads them.
+// signer makes HMAC-SHA256 tokens: base64url(json) "." base64url(mac).
 type signer struct{ key []byte }
 
 func (s signer) sign(c claims) string {

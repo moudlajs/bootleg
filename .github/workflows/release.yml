@@ -1,3 +1,4 @@
+# On a v* tag: test, publish the CLI with GoReleaser, then deploy the connector.
 name: Release
 
 on:
@@ -32,8 +33,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # The connector (bootleg-mcp) goes to Cloud Run once the CLI release is
-  # published. deploy.yml can also be run by hand to (re)deploy any tag.
   deploy:
     needs: release
     permissions:

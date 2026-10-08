@@ -17,8 +17,7 @@ import (
 	"github.com/moudlajs/bootleg/internal/auth"
 )
 
-// fakeApple serves a two-song catalog and an existing "Road trip" playlist,
-// and records writes. status, when set, answers every request with it.
+// fakeApple serves a two-song catalog and a "Road trip" playlist; status, if set, answers everything.
 type fakeApple struct {
 	mu      sync.Mutex
 	status  int
@@ -99,8 +98,7 @@ func connect(t *testing.T, svc *Service) *sdk.ClientSession {
 	return cs
 }
 
-// call invokes a tool and returns its structured result (decoded into out)
-// or its error text.
+// call invokes a tool, decoding its result into out, or returns its error text.
 func call(t *testing.T, cs *sdk.ClientSession, tool string, args map[string]any, out any) (errText string) {
 	t.Helper()
 	res, err := cs.CallTool(context.Background(), &sdk.CallToolParams{Name: tool, Arguments: args})
@@ -274,8 +272,7 @@ func TestHTTPHandler(t *testing.T) {
 		t.Errorf("/health = %d %q", resp.StatusCode, body)
 	}
 
-	// Strangers can't drain the owner's rate limit: more unauthenticated
-	// requests than the burst all get 401, never 429.
+	// Strangers can't drain the owner's rate limit: past the burst it's still 401, never 429.
 	for i := 0; i < requestBurst+10; i++ {
 		resp, err := http.Post(srv.URL+"/mcp", "application/json", strings.NewReader(`{}`))
 		if err != nil {
@@ -298,8 +295,7 @@ func TestHTTPHandler(t *testing.T) {
 	}
 }
 
-// add_songs to a playlist ID that isn't in the library says so; elsewhere a
-// 404 isn't blamed on a playlist.
+// A missing playlist ID is reported as such; other 404s aren't blamed on a playlist.
 func TestNotFoundWording(t *testing.T) {
 	f := &fakeApple{}
 	svc := newService(t, f)

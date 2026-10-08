@@ -1,7 +1,4 @@
-// Package connector exposes bootleg as MCP tools for Claude, so it can be
-// used from the Claude apps (phone included) as a connector. It knows MCP
-// and how to word results for people; the work is done by
-// internal/importer.
+// Package connector exposes bootleg as MCP tools for Claude; internal/importer does the work.
 package connector
 
 import (
@@ -20,11 +17,9 @@ import (
 )
 
 const (
-	// maxSongs per call keeps one tool call well inside the time Claude
-	// waits for it (about 1 s per song including the pause).
+	// maxSongs keeps one call well inside Claude's wait (about 1 s per song).
 	maxSongs = 50
-	// callTimeout bounds one tool call; Cloud Run's request timeout is set
-	// higher, so the call fails with a clear error rather than a cut-off.
+	// callTimeout is below Cloud Run's request timeout, so a slow call fails with a clear error.
 	callTimeout = 4 * time.Minute
 )
 
@@ -122,9 +117,6 @@ type AddOutput struct {
 	Note           string       `json:"note,omitempty" jsonschema:"tell the user this"`
 }
 
-// favouritesDelay is said whenever songs were favourited: Apple has them
-// at once, but the apps only show new favourites after iCloud syncs, which
-// took about five minutes in the owner's test (#55).
 const favouritesDelay = "Apple Music has the favourites already, but Favourite Songs on the user's devices can take " +
 	"a few minutes to show them (iCloud sync is slower for favourites than for playlists). If they're missing, wait a " +
 	"few minutes before trying again: adding them twice changes nothing."
@@ -163,8 +155,7 @@ func (s *Service) add(ctx context.Context, in AddInput) (AddOutput, error) {
 	if err != nil {
 		return AddOutput{}, err
 	}
-	// Chats retry: a second "create Road trip" would make a second playlist
-	// with the same name. Refuse and point at the existing one instead.
+	// Chats retry, so refuse a duplicate name rather than make a second playlist.
 	if opts.To.Playlist && opts.PlaylistName != "" {
 		if err := s.checkNameFree(ctx, opts.PlaylistName); err != nil {
 			return AddOutput{}, err
@@ -221,7 +212,6 @@ func (s *Service) playlists(ctx context.Context, _ struct{}) (PlaylistsOutput, e
 	return out, nil
 }
 
-// resolve parses the song lines and looks each one up.
 func (s *Service) resolve(ctx context.Context, songs string) ([]importer.Line, int, error) {
 	queries, skipped, err := parser.Parse(strings.NewReader(songs))
 	if err != nil {
@@ -254,8 +244,6 @@ func (s *Service) checkNameFree(ctx context.Context, name string) error {
 	return nil
 }
 
-// writeOptions checks add_songs' arguments the way the CLI checks its
-// flags.
 func writeOptions(in AddInput, delay time.Duration) (importer.WriteOptions, error) {
 	if len(in.To) == 0 {
 		return importer.WriteOptions{}, errors.New("say where the songs go: to = pl, lib and/or fav")
@@ -276,8 +264,7 @@ func writeOptions(in AddInput, delay time.Duration) (importer.WriteOptions, erro
 	return importer.WriteOptions{To: t, PlaylistName: name, PlaylistID: id, Delay: delay}, nil
 }
 
-// people words an error for the user. Apple client errors carry method,
-// path and status only, never tokens.
+// people words an error for the user; Apple client errors never carry tokens.
 func people(err error) string {
 	switch {
 	case errors.Is(err, applemusic.ErrUnauthorized):
@@ -297,9 +284,7 @@ func people(err error) string {
 	}
 }
 
-// handler adds a time limit and one log line per call to a tool function.
-// Song names are logged only as a count.
-// (A function, not a method: Go methods can't have type parameters.)
+// handler adds a time limit and one log line (no song names) to a tool function.
 func handler[In, Out any](log *slog.Logger, name string, h func(context.Context, In) (Out, error)) sdk.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, _ *sdk.CallToolRequest, in In) (*sdk.CallToolResult, Out, error) {
 		ctx, cancel := context.WithTimeout(ctx, callTimeout)

@@ -1,14 +1,5 @@
-// Package auth is bootleg's own small OAuth 2.1 authorization server, so
-// that only the owner can use the hosted connector, which holds the owner's
-// Apple Music tokens. It knows OAuth, not MCP or Apple Music.
-//
-// Ported from moudlajs/waiverwatch (c044bbd), where it ran in production
-// before that project moved to multi-user sign-in.
-//
-// Claude identifies itself with a Client ID Metadata Document (its client_id
-// is an HTTPS URL); only Claude's documents are accepted. The owner signs in
-// once per client with a passphrase. Codes and tokens are HMAC-signed and
-// self-contained, so nothing is stored and restarts don't sign anyone out.
+// Package auth is a small OAuth 2.1 server so only the owner can use the hosted connector.
+// Ported from moudlajs/waiverwatch@c044bbd.
 package auth
 
 import (
@@ -29,8 +20,8 @@ import (
 
 // Claude's published client identities.
 const (
-	ClaudeClient     = "https://claude.ai/oauth/mcp-oauth-client-metadata"   // claude.ai, desktop and mobile apps
-	ClaudeCodeClient = "https://claude.ai/oauth/claude-code-client-metadata" // Claude Code
+	ClaudeClient     = "https://claude.ai/oauth/mcp-oauth-client-metadata" // claude.ai, desktop and mobile apps
+	ClaudeCodeClient = "https://claude.ai/oauth/claude-code-client-metadata"
 )
 
 const (
@@ -58,15 +49,11 @@ type Server struct {
 	httpClient *http.Client
 	now        func() time.Time
 
-	// Passphrase attempts across all clients: slow enough that guessing a
-	// 12+ character passphrase is hopeless, fast enough for typos.
+	// logins limits passphrase attempts across all clients.
 	logins *rate.Limiter
 
 	mu sync.Mutex
-	// usedCodes enforces single-use codes, kept until they expire. It is
-	// per instance and lost on restart, so after a restart or on another
-	// instance a code could be redeemed again within its 2-minute TTL; it
-	// still needs the PKCE verifier, and the service runs one instance.
+	// usedCodes is per instance, so a restart allows reuse within the TTL; PKCE still applies.
 	usedCodes map[string]time.Time
 	docs      map[string]cachedDoc // client metadata documents
 }
@@ -126,8 +113,7 @@ func (s *Server) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /token", s.token)
 }
 
-// Protect lets requests with a valid access token for Resource through, and
-// answers the rest with the 401 challenge that starts Claude's sign-in.
+// Protect passes requests with a valid access token and answers the rest with a 401 challenge.
 func (s *Server) Protect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")

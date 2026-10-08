@@ -6,12 +6,10 @@ import (
 	"strings"
 )
 
-// libraryBatch is how many song IDs go into one add-to-library request,
-// keeping the query string a reasonable length.
+// libraryBatch caps song IDs per request to keep the query string short.
 const libraryBatch = 100
 
-// AddToLibrary adds catalog songs to the user's library ("Songs" in the
-// app). Apple accepts the request (202) and applies it within seconds.
+// AddToLibrary adds catalog songs to the user's library; Apple applies it within seconds.
 func (c *Client) AddToLibrary(ctx context.Context, songIDs []string) error {
 	for start := 0; start < len(songIDs); start += libraryBatch {
 		end := min(start+libraryBatch, len(songIDs))
@@ -30,9 +28,7 @@ type ratingRequest struct {
 	} `json:"attributes"`
 }
 
-// Favorite marks a catalog song as a favourite (the star in the app), which
-// puts it in the automatic "Favourite Songs" playlist and in the library.
-// Under the hood it is a "love" rating of 1.
+// Favorite favourites a catalog song (a "love" rating of 1), which also adds it to the library.
 func (c *Client) Favorite(ctx context.Context, songID string) error {
 	body := ratingRequest{Type: "rating"}
 	body.Attributes.Value = 1

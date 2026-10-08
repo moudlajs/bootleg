@@ -23,14 +23,10 @@ const (
 // DefaultStorefront is used when neither AM_STOREFRONT nor -storefront is set.
 const DefaultStorefront = "us"
 
-// ErrMissingToken is returned by FromEnv when a required token is unset.
-// The wrapping error names the variable; it never contains a value.
+// ErrMissingToken is returned by FromEnv when a token is unset; the wrapping error names the variable, never its value.
 var ErrMissingToken = errors.New("missing token")
 
-// Config holds everything read from the environment.
-//
-// The tokens are redacted by String, GoString and LogValue, and excluded
-// from JSON, so no formatting or logging path prints them.
+// Config holds everything read from the environment. Tokens are redacted by String, GoString, LogValue and JSON.
 type Config struct {
 	DevToken   string `json:"-"`
 	UserToken  string `json:"-"`
@@ -44,8 +40,7 @@ func FromEnv() (Config, error) {
 		UserToken:  strings.TrimSpace(os.Getenv(EnvUserToken)),
 		Storefront: strings.TrimSpace(os.Getenv(EnvStorefront)),
 	}
-	// Users often paste the whole header value, sometimes losing the space
-	// after "Bearer" on the way.
+	// Users often paste the whole header value, sometimes without the space after "Bearer".
 	c.DevToken = stripBearer(c.DevToken)
 
 	for _, v := range []struct{ name, val string }{
@@ -62,9 +57,7 @@ func FromEnv() (Config, error) {
 	return c, nil
 }
 
-// stripBearer removes a pasted "Bearer" prefix in any case, followed by any
-// whitespace or none ("Bearer eyJ…", "BearereyJ…"). A developer token is a
-// JWT, which always starts with "eyJ", so the word is never part of it.
+// stripBearer is safe because the dev token is a JWT, which always starts with "eyJ".
 func stripBearer(s string) string {
 	const prefix = "bearer"
 	if len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
@@ -98,9 +91,7 @@ func redact(s string) string {
 	return "<redacted>"
 }
 
-// LoadDotEnv reads KEY=value lines from path and sets each variable that is
-// not already set in the environment, so real env vars always win.
-// A missing file is not an error: .env is optional.
+// LoadDotEnv sets unset variables from KEY=value lines in path; a missing file is fine.
 func LoadDotEnv(path string) error {
 	f, err := os.Open(path) // #nosec G304 -- the path is chosen by the user running the tool.
 	if errors.Is(err, fs.ErrNotExist) {
@@ -109,8 +100,6 @@ func LoadDotEnv(path string) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}
-	// Closing a file opened read-only cannot lose data, so its error is
-	// safe to ignore; the blank func keeps errcheck honest about that.
 	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
@@ -128,8 +117,7 @@ func LoadDotEnv(path string) error {
 		key = strings.TrimSpace(key)
 		val = unquote(strings.TrimSpace(val))
 
-		// LookupEnv distinguishes "unset" from "set to empty"; an explicit
-		// empty value in the shell still counts as set and is not overridden.
+		// An explicit empty value in the shell still counts as set.
 		if _, set := os.LookupEnv(key); set {
 			continue
 		}
@@ -143,7 +131,6 @@ func LoadDotEnv(path string) error {
 	return nil
 }
 
-// unquote strips one pair of matching surrounding quotes.
 func unquote(s string) string {
 	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] {
 		return s[1 : len(s)-1]

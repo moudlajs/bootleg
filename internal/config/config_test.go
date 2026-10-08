@@ -12,9 +12,7 @@ import (
 	"testing"
 )
 
-// unsetEnv makes key unset for the duration of the test. t.Setenv registers
-// a cleanup that restores the original value, so unsetting afterwards does
-// not leak into other tests.
+// unsetEnv unsets key for this test; t.Setenv's cleanup restores it afterwards.
 func unsetEnv(t *testing.T, key string) {
 	t.Helper()
 	t.Setenv(key, "")

@@ -1,29 +1,17 @@
 #!/usr/bin/env bash
-# One-time (and safely re-runnable) Google Cloud setup for the bootleg
-# connector in its own project (bootleg-638112), so nothing is shared with
-# other projects: not the deploy rights, not the kill switch.
-#
-# Creates what the deploy workflow needs, with no keys stored anywhere:
-# GitHub Actions signs in through Workload Identity Federation, only from
-# this repository's main branch or v* tags. Also creates the token signing
-# key and the empty secrets, readable only by bootleg's runtime account, a
-# budget alert and the billing kill switch.
-# After it, run deploy/passphrase.sh and deploy/tokens.sh, then release.
-#
-# Prerequisites: a project with billing linked, `gcloud auth login`,
-# `gh auth login`, and Docker (to copy the kill switch image).
-#
+# One-time, re-runnable GCP setup for bootleg: keyless GitHub deploys, secrets, budget and billing kill switch.
+# Needs billing linked, gcloud/gh logged in and Docker; afterwards run deploy/passphrase.sh, deploy/tokens.sh, then release.
 #   deploy/setup.sh [project-id] [billing-account-id]
 set -euo pipefail
 PROJECT=${1:-bootleg-638112}
 BILLING=${2:-01D49B-E5CDCF-22ECEC}
-BUDGET_CZK=25             # about $1: any spend at all means something is wrong
+BUDGET_CZK=25             # about $1: any spend at all is a problem
 REPO=moudlajs/bootleg
 REGION=europe-west1
 SERVICE=bootleg
-AR_REPO=bootleg           # Artifact Registry repository
-RUNTIME_SA=bootleg-run    # what the service runs as: no project roles, reads only its own secrets
-DEPLOY_SA=bootleg-deploy  # what GitHub Actions deploys as
+AR_REPO=bootleg
+RUNTIME_SA=bootleg-run    # no project roles, reads only its own secrets
+DEPLOY_SA=bootleg-deploy
 POOL=github
 PROVIDER=github-bootleg
 SECRETS=(bootleg-signing-key bootleg-passphrase bootleg-am-dev-token bootleg-am-user-token bootleg-am-storefront)
@@ -95,8 +83,7 @@ for s in "${SECRETS[@]}"; do
   retry gc secrets add-iam-policy-binding "$s" \
     --member "serviceAccount:$RUNTIME_EMAIL" --role roles/secretmanager.secretAccessor >/dev/null
 done
-# The token signing key: random, generated once straight into Secret
-# Manager, never printed. Rotating it signs every client out.
+# Signing key goes straight into Secret Manager, never printed; rotating it signs every client out.
 if [ -z "$(gc secrets versions list bootleg-signing-key --filter state=enabled --format 'value(name)')" ]; then
   openssl rand -base64 48 | tr -d '\n' | gc secrets versions add bootleg-signing-key --data-file=- >/dev/null
   echo "  generated a signing key"
@@ -106,6 +93,7 @@ say "Workload Identity Federation for $REPO (main branch and v* tags only)"
 if ! gc iam workload-identity-pools describe "$POOL" --location global >/dev/null 2>&1; then
   gc iam workload-identity-pools create "$POOL" --location global --display-name "GitHub Actions"
 fi
+# Only this repo's main branch and v* tags may deploy.
 condition="assertion.repository == '$REPO' && (assertion.ref == 'refs/heads/main' || assertion.ref.startsWith('refs/tags/v'))"
 if ! gc iam workload-identity-pools providers describe "$PROVIDER" --location global \
   --workload-identity-pool "$POOL" >/dev/null 2>&1; then
@@ -128,14 +116,7 @@ if ! grep -qx bootleg <<<"$budgets"; then
 fi
 
 say "Billing kill switch"
-# The budget publishes to TOPIC; a push subscription delivers each message
-# to the private bootleg-killswitch service (only PUSH_SA may invoke it).
-# When actual cost reaches the budget, it unlinks this project's billing,
-# which stops every paid service here. KILLSWITCH_DRY_RUN=1 deploys it in
-# log-only mode. The program is waiverwatch's (moudlajs/waiverwatch,
-# cmd/killswitch; it only knows KILLSWITCH_PROJECT): its latest release
-# image is copied into this project's registry, so nothing here depends on
-# the waiverwatch project at run time.
+# Budget -> Pub/Sub -> bootleg-killswitch (waiverwatch's image), which unlinks billing when cost reaches the budget.
 TOPIC=billing-budget
 KILL_SA=killswitch
 PUSH_SA=killswitch-push
@@ -147,8 +128,7 @@ for sa in "$KILL_SA:billing kill switch" "$PUSH_SA:Pub/Sub push to the kill swit
     gc iam service-accounts create "$name" --display-name "${sa#*:}"
   fi
 done
-# Unlinking billing needs Project Billing Manager on this project; reading
-# billing info first needs resourcemanager.projects.get (roles/browser).
+# projectManager to unlink billing; browser to read billing info first.
 for role in roles/billing.projectManager roles/browser; do
   retry gc projects add-iam-policy-binding "$PROJECT" --member "serviceAccount:$KILL_EMAIL" \
     --role "$role" --condition None >/dev/null
@@ -178,7 +158,7 @@ if ! gc artifacts docker images describe "$KILL_IMAGE" >/dev/null 2>&1; then
   docker push -q "$KILL_IMAGE" >/dev/null
   echo "  copied kill switch image from waiverwatch $WW_TAG"
 fi
-# A trail of exactly what guards billing (tags can move).
+# Log the digest: tags can move.
 echo "  kill switch image digest: $(gc artifacts docker images describe "$KILL_IMAGE" --format 'value(image_summary.digest)')"
 gc run deploy bootleg-killswitch --region "$REGION" --image "$KILL_IMAGE" \
   --command /killswitch --service-account "$KILL_EMAIL" --no-allow-unauthenticated \

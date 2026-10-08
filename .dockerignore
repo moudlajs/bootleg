@@ -1,4 +1,4 @@
-# Never send tokens or local builds into the image build context.
+# Keeps .env (tokens) and local builds out of the image; never drop .env.
 .env
 .env.*
 !.env.example

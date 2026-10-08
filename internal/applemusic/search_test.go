@@ -20,8 +20,7 @@ const (
 	testUserToken = "FAKE-USER-TOKEN"
 )
 
-// newTestClient starts an httptest.Server running handler and returns a
-// Client pointed at it. The server is closed when the test ends.
+// newTestClient returns a Client pointed at an httptest.Server running handler.
 func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -122,8 +121,7 @@ func TestSearchRequest(t *testing.T) {
 	if got.URL.Path != "/v1/catalog/cz/search" {
 		t.Errorf("path = %s", got.URL.Path)
 	}
-	// URL.Query() decodes the query string, so this also proves the term
-	// survived encoding (& and non-ASCII would break a naive concatenation).
+	// Decoded via URL.Query(), so this also proves & and non-ASCII survived encoding.
 	q := got.URL.Query()
 	for k, want := range map[string]string{"term": "Sigur Rós & friends", "types": "songs", "limit": "5"} {
 		if q.Get(k) != want {

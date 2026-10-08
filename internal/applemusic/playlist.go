@@ -6,7 +6,6 @@ import (
 	"net/url"
 )
 
-// trackRef is how the API refers to a catalog song in a playlist body.
 type trackRef struct {
 	ID   string `json:"id"`
 	Type string `json:"type"`
@@ -29,8 +28,7 @@ type createPlaylistResponse struct {
 	} `json:"data"`
 }
 
-// CreatePlaylist creates a library playlist called name containing songIDs,
-// in order, in a single request. It returns the new playlist's ID.
+// CreatePlaylist creates a library playlist with songIDs in order and returns its ID.
 func (c *Client) CreatePlaylist(ctx context.Context, name string, songIDs []string) (string, error) {
 	var body createPlaylistRequest
 	body.Attributes.Name = name
@@ -50,17 +48,13 @@ type addTracksRequest struct {
 	Data []trackRef `json:"data"`
 }
 
-// AddTracks appends songIDs, in order, to the existing library playlist
-// playlistID. A playlist ID that isn't in the library is ErrNotFound.
+// AddTracks appends songIDs to library playlist playlistID; an unknown ID is ErrNotFound.
 func (c *Client) AddTracks(ctx context.Context, playlistID string, songIDs []string) error {
-	// PathEscape: the ID is user input and becomes part of the URL path.
 	path := "/v1/me/library/playlists/" + url.PathEscape(playlistID) + "/tracks"
 	return c.do(ctx, "POST", path, nil, addTracksRequest{Data: trackRefs(songIDs)}, nil)
 }
 
-// trackRefs turns song IDs into the {"id", "type": "songs"} objects the
-// API expects. It never returns nil, so an empty list encodes as [] and
-// not null.
+// trackRefs never returns nil, so an empty list encodes as [] and not null.
 func trackRefs(songIDs []string) []trackRef {
 	refs := make([]trackRef, 0, len(songIDs))
 	for _, id := range songIDs {
