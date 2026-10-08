@@ -36,7 +36,7 @@ Every change follows the same path:
 | `feat` | new capability |
 | `fix` | corrected behaviour |
 | `test` | tests only |
-| `docs` | README, CLAUDE.md, help text |
+| `docs` | README, docs/, CLAUDE.md, help text |
 | `ci` | workflows |
 | `refactor` | no behaviour change |
 | `chore` | deps, repo plumbing, releases |
