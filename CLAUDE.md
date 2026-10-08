@@ -43,7 +43,14 @@ internal/matcher        PURE: normalise, reject karaoke/tribute, score, pick bes
 internal/applemusic     HTTP client: Search, CreatePlaylist, AddTracks, AddToLibrary, Favorite
 internal/importer       the engine: Resolve (search + match), Write (playlist/library/favourites); no printing, no files
 internal/auth           owner-only OAuth 2.1 sign-in for the hosted connector (passphrase; Claude's client IDs only)
+internal/connector      MCP tools (preview_songs, add_songs, list_playlists) + HTTP transport; words results for people
+cmd/bootleg-mcp/main.go the connector: stdio locally, HTTP /mcp + /health when PORT is set, sign-in required
 ```
+
+- The connector caps a call at 50 songs (Claude splits longer lists) and
+  4 minutes, paces Apple at 300 ms, and refuses to create a playlist whose
+  name already exists (chats retry; it points at `playlist_id` instead).
+  Screenshots work because Claude transcribes them into lines first.
 
 - The CLI (and the connector) are thin shells over `internal/importer`:
   they read input, call `Resolve` and `Write`, and word the results. Files

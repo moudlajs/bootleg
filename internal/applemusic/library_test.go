@@ -96,3 +96,56 @@ func TestAddToLibraryEmptyIsNoop(t *testing.T) {
 		t.Fatalf("AddToLibrary(nil) error = %v", err)
 	}
 }
+
+func TestListPlaylistsFollowsNext(t *testing.T) {
+	var calls []string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.URL.RequestURI())
+		if r.URL.Query().Get("offset") == "" {
+			_, _ = w.Write([]byte(`{"next":"/v1/me/library/playlists?offset=100","data":[
+				{"id":"p.1","attributes":{"name":"Road trip","canEdit":true,"lastModifiedDate":"2026-10-07T22:18:30Z"}}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"p.fav","attributes":{"name":"Favourite Songs","canEdit":false}}]}`))
+	})
+
+	got, err := c.ListPlaylists(context.Background())
+	if err != nil {
+		t.Fatalf("ListPlaylists() error = %v", err)
+	}
+	want := []Playlist{
+		{ID: "p.1", Name: "Road trip", CanEdit: true, Modified: "2026-10-07T22:18:30Z"},
+		{ID: "p.fav", Name: "Favourite Songs"},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("ListPlaylists() = %+v, want %+v", got, want)
+	}
+	if len(calls) != 2 || calls[0] != "/v1/me/library/playlists?limit=100" || calls[1] != "/v1/me/library/playlists?limit=100&offset=100" {
+		t.Errorf("requests = %v", calls)
+	}
+}
+
+// A next link to anywhere but this API is not followed.
+func TestListPlaylistsIgnoresForeignNext(t *testing.T) {
+	calls := 0
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"next":"https://evil.example/steal","data":[]}`))
+	})
+	if _, err := c.ListPlaylists(context.Background()); err != nil {
+		t.Fatalf("ListPlaylists() error = %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("made %d requests, want 1", calls)
+	}
+}
+
+// Hitting the page cap is an error, not a short list that looks complete.
+func TestListPlaylistsTooMany(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"next":"/v1/me/library/playlists?offset=1","data":[{"id":"p.x","attributes":{"name":"x"}}]}`))
+	})
+	if _, err := c.ListPlaylists(context.Background()); err == nil || !strings.Contains(err.Error(), "more than") {
+		t.Fatalf("ListPlaylists() error = %v, want a too-many error", err)
+	}
+}
