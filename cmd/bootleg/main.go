@@ -26,7 +26,7 @@ import (
 // It must be a package-level var (not a const) for -X to work.
 var version = "dev"
 
-// Exit codes. See the table in README.md and CLAUDE.md; exitCode maps
+// Exit codes. See the table in docs/cli.md and CLAUDE.md; exitCode maps
 // errors onto them.
 const (
 	exitOK    = 0
@@ -45,7 +45,7 @@ Refresh them:
        authorization (without "Bearer ")  -> %s
        media-user-token                   -> %s
      into .env or your shell.
-See "Token setup" in the README.`, config.EnvDevToken, config.EnvUserToken)
+Step by step: docs/tokens.md in the bootleg repository.`, config.EnvDevToken, config.EnvUserToken)
 
 func main() {
 	// os.Exit skips deferred calls, so the work happens in realMain, whose

@@ -283,7 +283,7 @@ func people(err error) string {
 	case errors.Is(err, applemusic.ErrUnauthorized):
 		return "Apple Music rejected the web-player tokens; they have probably expired. The owner needs fresh tokens " +
 			"from music.apple.com (DevTools > Network > amp-api request headers) in bootleg's .env, then deploy/tokens.sh " +
-			"(README: Refreshing tokens)"
+			"(docs/tokens.md)"
 	case errors.Is(err, applemusic.ErrRateLimited):
 		return "Apple Music is rate limiting requests; wait a minute, then try again with fewer songs"
 	case errors.Is(err, applemusic.ErrNotFound):

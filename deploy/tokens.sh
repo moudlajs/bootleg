@@ -2,7 +2,7 @@
 # Copies the Apple Music web-player tokens from .env into Secret Manager and
 # rolls a new revision of the connector so it uses them. Run it whenever
 # Apple rejects the tokens (bootleg exits 2, or the connector says they
-# expired): refresh .env first (README: Token setup).
+# expired): refresh .env first (docs/tokens.md).
 #
 # Values are piped straight into gcloud and never printed.
 #
@@ -13,7 +13,7 @@ PROJECT=${2:-bootleg-638112}
 REGION=europe-west1
 SERVICE=bootleg
 
-[ -f "$ENV_FILE" ] || { echo "no $ENV_FILE: copy .env.example and fill it in (README: Token setup)" >&2; exit 1; }
+[ -f "$ENV_FILE" ] || { echo "no $ENV_FILE: copy .env.example and fill it in (docs/tokens.md)" >&2; exit 1; }
 
 # value KEY prints KEY's value from ENV_FILE (last one wins), without
 # surrounding quotes or a trailing CR. Only ever piped, never echoed.
