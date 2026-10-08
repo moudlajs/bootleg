@@ -1,22 +1,15 @@
 name: Claude review
 
-# `review` is a required check, so a green result must mean a review
-# happened. Every step below exists because of a way it once went green
-# without one - see "Things that have already bitten" in CLAUDE.md.
+# Required check: green must mean this commit was reviewed (CLAUDE.md, "Things that have already bitten").
 
 on:
   pull_request:
-    # Drafts get a no-op run (see the first step). ready_for_review is the
-    # event that matters: marking a draft ready is what asks for a review.
-    # synchronize re-reviews fixes pushed after that.
+    # Drafts no-op; marking ready asks for a review, later pushes re-review.
     types: [opened, reopened, ready_for_review, synchronize]
   issue_comment:
     types: [created]
 
-# One group per event type. A group holds a single pending run and a new
-# one replaces it regardless of cancel-in-progress, so if comments shared
-# the PR group, any comment (including Claude's own summary) could replace
-# a queued review and leave `review` cancelled.
+# Per event type, so a comment can't replace a queued review run.
 concurrency:
   group: claude-review-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -29,13 +22,7 @@ permissions:
 
 jobs:
   review:
-    # Dependabot PRs are skipped, deliberately: Dependabot gets no secrets,
-    # so a run could only fail. A skipped required check passes, so those
-    # PRs are gated by CI alone. For comments, fire only on an explicit
-    # @claude mention on a pull request.
-    #
-    # Draft state is deliberately NOT decided here from the payload alone;
-    # see the first step.
+    # Dependabot is skipped (no secrets). Draft state is NOT decided here: see the first step (#16).
     if: |
       (github.event_name == 'pull_request' &&
        github.event.pull_request.user.login != 'dependabot[bot]') ||
@@ -45,14 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        # Explicit `shell: bash` adds -o pipefail, so a failing `gh api` in
-        # a pipeline fails the step instead of producing an empty count.
+        # Explicit bash adds pipefail, so a failing gh api fails the step.
         shell: bash
     steps:
-      # The payload is a snapshot: a push landing just before `gh pr ready`
-      # produces a run whose payload still says draft, and that run cancels
-      # the ready one (#16). The live API can lag the other way. So skip
-      # only when BOTH say draft; a ready_for_review payload never does.
+      # Skip only if payload AND live API say draft: a racing push once skipped the review (#16).
       - name: Skip drafts
         id: draft
         env:
@@ -69,10 +52,7 @@ jobs:
             echo "PR #$PR is a draft - no review. Mark it ready to request one."
           fi
 
-      # A comment run has this repo's secrets and write permissions, and
-      # `go test` executes the checked-out code. Never do that with code
-      # from a fork (the "pwn request" pattern). Only write-access users
-      # can trigger the action, but a stray @claude reply is enough.
+      # Never run a fork's code with this repo's secrets (pwn request).
       - name: Refuse @claude runs on fork PRs
         if: github.event_name == 'issue_comment'
         env:
@@ -90,25 +70,20 @@ jobs:
         if: steps.draft.outputs.draft != 'true'
         with:
           fetch-depth: 0
-          # issue_comment runs default to main; check out the PR instead, so
-          # an @claude review looks at the code the prompt says it does.
-          # Empty means the default, which for pull_request is the PR merge ref.
+          # Comment runs would check out main; review the PR instead.
           ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
 
       - uses: anthropics/claude-code-action@v1
         if: steps.draft.outputs.draft != 'true'
         with:
-          # Minted with `claude setup-token` - the Claude subscription, not a
-          # metered API key.
+          # From `claude setup-token` (subscription, not an API key).
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          # No "Generated with Claude Code" footer or co-author trailer on
-          # anything the reviewer writes. The verify step enforces it too.
+          # No attribution footer or trailer; the verify step enforces it.
           settings: |
             {"attribution": {"commit": "", "pr": ""}, "includeGitInstructions": false}
 
-          # Without these the review runs and then has no permission to post
-          # anything; the log says "No buffered inline comments".
+          # Without these it reviews but can't post ("No buffered inline comments").
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(go test:*),Bash(go vet:*),Bash(go build:*)"
 
@@ -159,14 +134,7 @@ jobs:
             fix. If you find nothing significant, say so plainly rather than
             padding. Do not approve or merge.
 
-      # The action exits green without reviewing in some cases, notably when
-      # the PR changes this workflow file: it refuses to run a workflow that
-      # differs from the default branch's (#17). So require the summary it
-      # was told to post, naming the exact head SHA, from claude[bot].
-      #
-      # pull_request runs only: they are what produce the required check.
-      # @claude comment runs are ad hoc and not gated; their footer is
-      # suppressed by the settings above, not verified here.
+      # The action can exit green without reviewing (#17): require claude[bot]'s summary for this SHA.
       - name: Verify a review was actually posted
         if: steps.draft.outputs.draft != 'true' && github.event_name == 'pull_request'
         env:
@@ -176,20 +144,17 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          # Count PR comments by author $1 whose first line starts with $2.
-          # Only constants and a SHA are interpolated into the jq program.
+          # Comments by $1 starting with $2; only constants and a SHA reach jq.
           count() {
             gh api "repos/$REPO/issues/$PR/comments" --paginate \
               --jq "[.[] | select(.user.login == \"$1\" and (.body | startswith(\"$2\")))] | length" \
               | awk '{s+=$1} END {print s+0}'
           }
 
-          # Assigned on its own line: a failure inside `[ "$(...)" ]` would
-          # be ignored even with pipefail.
+          # Own line: a failure inside [ "$(...)" ] is ignored even with pipefail.
           n="$(count 'claude[bot]' "## Claude review of $HEAD_SHA")"
           if [ "$n" -gt 0 ]; then
-            # Same filter, restricted to summaries that carry an attribution
-            # footer, which the maintainer does not want on the PR.
+            # Reject a summary carrying an attribution footer line.
             footer="$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
               --jq "[.[] | select(.user.login == \"claude[bot]\" and (.body | startswith(\"## Claude review of $HEAD_SHA\")) and (.body | test(\"(?m)^[^A-Za-z]*Generated with .?Claude Code.?([(][^ )]*[)])?[^A-Za-z0-9]*$|(?m)^Co-Authored-By:\"; \"i\")))] | length" \
               | awk '{s+=$1} END {print s+0}')"
@@ -200,9 +165,7 @@ jobs:
             echo "ok - review of $HEAD_SHA posted"; exit 0
           fi
 
-          # Three-dot diff: what the PR changes relative to where it forked,
-          # so later changes on the default branch don't affect a re-run.
-          # --no-renames so moving code into a .md file shows the deletion.
+          # Three-dot: stable across main moving; --no-renames shows code moved into .md.
           range="origin/$DEFAULT_BRANCH...$HEAD_SHA"
           wf=.github/workflows/claude-review.yml
 
@@ -213,9 +176,7 @@ jobs:
             exit 1
           fi
 
-          # This PR changes the review workflow, so the action cannot review
-          # it. Allowed only if it touches nothing else but top-level docs,
-          # and a manual independent review of this exact SHA is posted.
+          # Workflow-only PRs (plus top-level .md) need a manual review of this exact SHA.
           files="$(git diff --name-only --no-renames "$range")"
           other="$(printf '%s\n' "$files" | grep -vE '^\.github/workflows/claude-review\.yml$|^[^/]+\.md$' || true)"
           if [ -n "$other" ]; then
