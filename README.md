@@ -219,6 +219,70 @@ so, and you should check your library.
 `-dry-run`, and a run that matches everything removes a stale one. If the input
 itself is `unmatched.txt`, it is never overwritten or removed.
 
+## Use it from Claude (phone, web, desktop)
+
+bootleg also runs as a **Claude connector**: tell Claude what to add, paste
+a tracklist, or **send a screenshot** of one, from the Claude app on your
+phone. Claude reads the songs, shows you what matched, and adds them where
+you say.
+
+The hosted connector is **owner-only**: it holds your Apple Music tokens, so
+every request needs your sign-in.
+
+**Connect it (once, on claude.ai or in the Claude app):**
+
+1. Settings → Connectors → **Add custom connector**.
+2. URL: `https://bootleg-1006894723977.europe-west1.run.app/mcp`
+3. Connect. A bootleg sign-in page opens: enter the **passphrase** (see
+   below). Connectors added on claude.ai also appear in the phone app.
+
+**Example prompts:**
+
+- "Add these to my Favourite Songs:" followed by a list
+- *(screenshot of a tracklist)* "Make a playlist called Gym from this"
+- "Put Massive Attack - Teardrop and Portishead - Glory Box in my Road trip
+  playlist"
+- "Add this album's tracks to my library:" followed by a list
+
+Claude always previews first (what matched, what didn't) and asks before
+adding. At most 50 songs per request; Claude splits longer lists. It won't
+create a second playlist with a name you already have.
+
+**Tools:** `preview_songs` (read-only), `add_songs` (playlist, Library,
+Favourite Songs), `list_playlists`.
+
+### Running your own (maintainer)
+
+The connector is `cmd/bootleg-mcp`, deployed to Google Cloud Run by the
+release workflow. One-time setup: `deploy/setup.sh`, then
+`deploy/passphrase.sh` (stores a new passphrase in Secret Manager, copies
+it to your clipboard and saves it in the macOS Keychain; it is never
+printed) and `deploy/tokens.sh`. Find the passphrase again with:
+
+```sh
+security find-generic-password -s "bootleg connector passphrase" -w
+```
+
+### Refreshing tokens
+
+When Claude says Apple rejected the tokens (or the CLI exits with code 2):
+update `.env` as in [Token setup](#token-setup), then run
+
+```sh
+deploy/tokens.sh
+```
+
+It copies the tokens into Secret Manager (never printing them) and restarts
+the connector with them. Nothing to change in Claude.
+
+Locally, `bootleg-mcp` also speaks MCP over stdio (Claude Code / Desktop),
+using your `.env`:
+
+```sh
+go install github.com/moudlajs/bootleg/cmd/bootleg-mcp@latest
+claude mcp add bootleg -- bootleg-mcp   # run from the folder with your .env
+```
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). `make lint test` runs what CI runs.
