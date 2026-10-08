@@ -39,7 +39,12 @@ internal/config         env vars + tiny .env loader (only fills unset vars)
 internal/parser         input file → []Query{Artist, Title, Raw}
 internal/matcher        PURE: normalise, reject karaoke/tribute, score, pick best
 internal/applemusic     HTTP client: Search, CreatePlaylist, AddTracks, AddToLibrary, Favorite
+internal/importer       the engine: Resolve (search + match), Write (playlist/library/favourites); no printing, no files
 ```
+
+- The CLI (and the connector) are thin shells over `internal/importer`:
+  they read input, call `Resolve` and `Write`, and word the results. Files
+  (`unmatched.txt`) and resume hints belong to the shell, not the engine.
 
 - `main` stays thin: parse flags, build dependencies, call
   `run(ctx, ...) error`, map errors to exit codes.
