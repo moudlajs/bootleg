@@ -18,8 +18,9 @@ SERVICE=bootleg
 # value KEY prints KEY's value from ENV_FILE (last one wins), without
 # surrounding quotes or a trailing CR. Only ever piped, never echoed.
 value() {
-  grep -E "^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=" "$ENV_FILE" | tail -n1 |
-    sed -E "s/^[^=]*=[[:space:]]*//; s/[[:space:]]*\r?$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"
+  # tr, not sed, drops CRs: \r in a sed pattern isn't portable.
+  grep -E "^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=" "$ENV_FILE" | tail -n1 | tr -d '\r' |
+    sed -E "s/^[^=]*=[[:space:]]*//; s/[[:space:]]*$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"
 }
 
 for pair in AM_DEV_TOKEN:bootleg-am-dev-token AM_USER_TOKEN:bootleg-am-user-token AM_STOREFRONT:bootleg-am-storefront; do

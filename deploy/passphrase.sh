@@ -26,7 +26,9 @@ printf '%s' "$pass" | gcloud --project "$PROJECT" --quiet secrets versions add b
 printf '%s' "$pass" | pbcopy
 # Also kept in the login Keychain, so a clobbered clipboard isn't a lockout:
 #   security find-generic-password -s "bootleg connector passphrase" -w
-security add-generic-password -U -a "$USER" -s "bootleg connector passphrase" -w "$pass"
+# Sent on stdin to `security -i`, not as an argument, so it never shows up
+# in the process list. (The alphabet needs no quoting.)
+printf 'add-generic-password -U -a %s -s "bootleg connector passphrase" -w %s\n' "$USER" "$pass" | security -i >/dev/null
 unset pass
 
 if gcloud --project "$PROJECT" run services describe "$SERVICE" --region "$REGION" >/dev/null 2>&1; then
