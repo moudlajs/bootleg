@@ -159,6 +159,22 @@ func TestAddSongsNewPlaylistAndFavourites(t *testing.T) {
 	if len(f.created) != 1 || strings.Join(f.favs, ",") != "p1,b1" {
 		t.Errorf("server saw created %v, favs %v", f.created, f.favs)
 	}
+	if !strings.Contains(out.Note, "few minutes") {
+		t.Errorf("note = %q, want the sync-delay hint", out.Note)
+	}
+}
+
+// No favourites, no note: the delay hint is only for favourites.
+func TestAddSongsLibraryHasNoNote(t *testing.T) {
+	var out AddOutput
+	if e := call(t, connect(t, newService(t, &fakeApple{})), "add_songs", map[string]any{
+		"songs": songs, "to": []string{"lib"},
+	}, &out); e != "" {
+		t.Fatalf("error: %s", e)
+	}
+	if out.AddedToLibrary != 2 || out.Note != "" {
+		t.Errorf("out = %+v, want 2 in the library and no note", out)
+	}
 }
 
 func TestAddSongsRefusesDuplicatePlaylistName(t *testing.T) {

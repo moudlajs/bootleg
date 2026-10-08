@@ -119,7 +119,15 @@ type AddOutput struct {
 	Playlist       *PlaylistRef `json:"playlist,omitempty"`
 	AddedToLibrary int          `json:"added_to_library"`
 	Favourited     int          `json:"favourited"`
+	Note           string       `json:"note,omitempty" jsonschema:"tell the user this"`
 }
+
+// favouritesDelay is said whenever songs were favourited: Apple has them
+// at once, but the apps only show new favourites after iCloud syncs, which
+// took about five minutes in the owner's test (#55).
+const favouritesDelay = "Apple Music has the favourites already, but Favourite Songs on the user's devices can take " +
+	"a few minutes to show them (iCloud sync is slower for favourites than for playlists). If they're missing, wait a " +
+	"few minutes before trying again: adding them twice changes nothing."
 
 // PlaylistsOutput is list_playlists' result.
 type PlaylistsOutput struct {
@@ -184,6 +192,9 @@ func (s *Service) add(ctx context.Context, in AddInput) (AddOutput, error) {
 		}
 	}
 	out.AddedToLibrary, out.Favourited = w.Library, w.Favorites
+	if w.Favorites > 0 {
+		out.Note = favouritesDelay
+	}
 	if err != nil {
 		var inc *importer.IncompleteError
 		if errors.As(err, &inc) {
