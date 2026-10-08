@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/moudlajs/bootleg/internal/applemusic"
+	"github.com/moudlajs/bootleg/internal/importer"
 )
 
 // fakeAPI is an httptest server that answers search by term and records
@@ -157,7 +158,7 @@ func TestRunPartial(t *testing.T) {
 	f, api, path := setup(t, input)
 	var out bytes.Buffer
 
-	err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", storefront: "cz", file: path}, api, &out, discardLogger())
+	err := run(context.Background(), options{to: importer.Targets{Playlist: true}, name: "Mix", storefront: "cz", file: path}, api, &out, discardLogger())
 	if !errors.Is(err, errPartial) {
 		t.Fatalf("run() error = %v, want errPartial", err)
 	}
@@ -192,7 +193,7 @@ func TestRunAllMatchedRemovesStaleReport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
+	if err := run(context.Background(), options{to: importer.Targets{Playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 	if _, err := os.Stat(report); !errors.Is(err, fs.ErrNotExist) {
@@ -209,7 +210,7 @@ func TestRunStaleReportRemovalFailureIsNotFatal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
+	if err := run(context.Background(), options{to: importer.Targets{Playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
 		t.Fatalf("run() error = %v, want nil", err)
 	}
 	if f.posts != 1 {
@@ -227,7 +228,7 @@ func TestRunReportWriteFailureIsNotFatal(t *testing.T) {
 	}
 	var out bytes.Buffer
 
-	err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, &out, discardLogger())
+	err := run(context.Background(), options{to: importer.Targets{Playlist: true}, name: "Mix", file: path}, api, &out, discardLogger())
 	if !errors.Is(err, errPartial) {
 		t.Fatalf("run() error = %v, want errPartial", err)
 	}
@@ -258,7 +259,7 @@ func TestRunCreateFailureStillSummarises(t *testing.T) {
 	}
 	var out bytes.Buffer
 
-	err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, &out, discardLogger())
+	err := run(context.Background(), options{to: importer.Targets{Playlist: true}, name: "Mix", file: path}, api, &out, discardLogger())
 	if err == nil || errors.Is(err, errPartial) {
 		t.Fatalf("run() error = %v, want the create failure", err)
 	}
@@ -280,7 +281,7 @@ func TestRunPartialNeverOverwritesInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger())
+	err := run(context.Background(), options{to: importer.Targets{Playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger())
 	if !errors.Is(err, errPartial) {
 		t.Fatalf("run() error = %v, want errPartial", err)
 	}
@@ -300,7 +301,7 @@ func TestRunAllMatchedKeepsReportThatIsTheInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
+	if err := run(context.Background(), options{to: importer.Targets{Playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger()); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -332,7 +333,7 @@ func TestRunNothingMatched(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	err := run(context.Background(), options{to: targets{playlist: true}, name: "Mix", file: path}, api, &out, discardLogger())
+	err := run(context.Background(), options{to: importer.Targets{Playlist: true}, name: "Mix", file: path}, api, &out, discardLogger())
 	if !errors.Is(err, errNothingMatched) {
 		t.Fatalf("run() error = %v, want errNothingMatched", err)
 	}
@@ -519,22 +520,6 @@ func TestCLIExitCodes(t *testing.T) {
 	}
 }
 
-func TestSleep(t *testing.T) {
-	if err := sleep(context.Background(), time.Millisecond); err != nil {
-		t.Errorf("sleep() = %v, want nil", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	start := time.Now()
-	if err := sleep(ctx, time.Hour); !errors.Is(err, context.Canceled) {
-		t.Errorf("sleep() = %v, want context.Canceled", err)
-	}
-	if time.Since(start) > time.Second {
-		t.Error("sleep ignored the cancelled context")
-	}
-}
-
 func TestRunWaitsBetweenSearches(t *testing.T) {
 	_, api, path := setup(t, "a - 1\nb - 2\nc - 3\n")
 	const delay = 40 * time.Millisecond
@@ -576,7 +561,7 @@ func TestRunCancelledMidRun(t *testing.T) {
 	}
 
 	start := time.Now()
-	err := run(ctx, options{to: targets{playlist: true}, name: "Mix", delay: time.Hour, file: path}, api, io.Discard, discardLogger())
+	err := run(ctx, options{to: importer.Targets{Playlist: true}, name: "Mix", delay: time.Hour, file: path}, api, io.Discard, discardLogger())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("run() error = %v, want context.Canceled", err)
 	}
@@ -620,7 +605,7 @@ func TestRunAppendsInsteadOfCreating(t *testing.T) {
 	f, api, path := setup(t, input)
 	var out bytes.Buffer
 
-	err := run(context.Background(), options{to: targets{playlist: true}, playlistID: "p.existing", file: path}, api, &out, discardLogger())
+	err := run(context.Background(), options{to: importer.Targets{Playlist: true}, playlistID: "p.existing", file: path}, api, &out, discardLogger())
 	if !errors.Is(err, errPartial) { // "Nobody - Nothing" has no match
 		t.Fatalf("run() error = %v, want errPartial", err)
 	}
@@ -664,9 +649,9 @@ func TestRunInterruptedDuringCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := run(ctx, options{to: targets{playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger())
-	if !errors.Is(err, errWriteInterrupted) || !errors.Is(err, context.Canceled) {
-		t.Fatalf("run() error = %v, want errWriteInterrupted wrapping context.Canceled", err)
+	err := run(ctx, options{to: importer.Targets{Playlist: true}, name: "Mix", file: path}, api, io.Discard, discardLogger())
+	if !errors.Is(err, importer.ErrWriteInterrupted) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("run() error = %v, want importer.ErrWriteInterrupted wrapping context.Canceled", err)
 	}
 }
 
@@ -698,38 +683,11 @@ func TestResolveVersion(t *testing.T) {
 	}
 }
 
-func TestParseTargets(t *testing.T) {
-	tests := []struct {
-		in      string
-		want    targets
-		wantErr bool
-	}{
-		{"pl", targets{playlist: true}, false},
-		{"lib", targets{library: true}, false},
-		{"fav", targets{favorites: true}, false},
-		{"lib,fav", targets{library: true, favorites: true}, false},
-		{" FAV , Library ,pl,pl", targets{playlist: true, library: true, favorites: true}, false},
-		{"favourites", targets{favorites: true}, false},
-		{"lib,", targets{}, true}, // trailing comma: empty entry
-		{"cloud", targets{}, true},
-	}
-	for _, tt := range tests {
-		got, err := parseTargets(tt.in)
-		if (err != nil) != tt.wantErr {
-			t.Errorf("parseTargets(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
-			continue
-		}
-		if !tt.wantErr && got != tt.want {
-			t.Errorf("parseTargets(%q) = %+v, want %+v", tt.in, got, tt.want)
-		}
-	}
-}
-
 func TestRunLibraryAndFavorites(t *testing.T) {
 	f, api, path := setup(t, input)
 	var out bytes.Buffer
 
-	opts := options{to: targets{library: true, favorites: true}, file: path}
+	opts := options{to: importer.Targets{Library: true, Favorites: true}, file: path}
 	err := run(context.Background(), opts, api, &out, discardLogger())
 	if !errors.Is(err, errPartial) { // "Nobody - Nothing" has no match
 		t.Fatalf("run() error = %v, want errPartial", err)
@@ -754,7 +712,7 @@ func TestRunLibraryAndFavorites(t *testing.T) {
 
 func TestRunAllThreeTargets(t *testing.T) {
 	f, api, path := setup(t, "Portishead - Glory Box\n")
-	opts := options{to: targets{playlist: true, library: true, favorites: true}, name: "Mix", file: path}
+	opts := options{to: importer.Targets{Playlist: true, Library: true, Favorites: true}, name: "Mix", file: path}
 	if err := run(context.Background(), opts, api, io.Discard, discardLogger()); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -784,7 +742,7 @@ func TestRunFavoriteFailsPartWay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := run(context.Background(), options{to: targets{favorites: true}, file: path}, api, io.Discard, discardLogger())
+	err := run(context.Background(), options{to: importer.Targets{Favorites: true}, file: path}, api, io.Discard, discardLogger())
 	if !errors.Is(err, applemusic.ErrUnauthorized) || !strings.Contains(err.Error(), "favourite 2 of 2") {
 		t.Fatalf("run() error = %v, want ErrUnauthorized at favourite 2 of 2", err)
 	}
@@ -822,7 +780,7 @@ func TestRunPartialWriteSaysHowToFinish(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := options{to: targets{playlist: true, library: true, favorites: true}, name: "Mix", storefront: "cz", file: path}
+	opts := options{to: importer.Targets{Playlist: true, Library: true, Favorites: true}, name: "Mix", storefront: "cz", file: path}
 	err := run(context.Background(), opts, api, io.Discard, discardLogger())
 	if err == nil {
 		t.Fatal("run() error = nil, want the library failure")
@@ -865,9 +823,9 @@ func TestRunCancelledBetweenFavorites(t *testing.T) {
 	start := time.Now()
 	// -delay also paces the two searches (1s total); the wait after the first
 	// favourite would be another second, but Ctrl-C cuts it short.
-	err := run(ctx, options{to: targets{favorites: true}, delay: time.Second, file: path}, api, io.Discard, discardLogger())
-	if !errors.Is(err, errWriteInterrupted) || !strings.Contains(err.Error(), "favourite 2 of 2") {
-		t.Fatalf("run() error = %v, want errWriteInterrupted at favourite 2 of 2", err)
+	err := run(ctx, options{to: importer.Targets{Favorites: true}, delay: time.Second, file: path}, api, io.Discard, discardLogger())
+	if !errors.Is(err, importer.ErrWriteInterrupted) || !strings.Contains(err.Error(), "favourite 2 of 2") {
+		t.Fatalf("run() error = %v, want importer.ErrWriteInterrupted at favourite 2 of 2", err)
 	}
 	if elapsed := time.Since(start); elapsed > 1900*time.Millisecond {
 		t.Errorf("took %v: the wait after the first favourite was not cut short", elapsed)
@@ -881,7 +839,7 @@ func TestRunCancelledBetweenFavorites(t *testing.T) {
 
 func TestRunDryRunWritesNothingAnywhere(t *testing.T) {
 	f, api, path := setup(t, "Portishead - Glory Box\n")
-	opts := options{to: targets{library: true, favorites: true}, dryRun: true, file: path}
+	opts := options{to: importer.Targets{Library: true, Favorites: true}, dryRun: true, file: path}
 	if err := run(context.Background(), opts, api, io.Discard, discardLogger()); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}

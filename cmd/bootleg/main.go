@@ -14,12 +14,12 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/moudlajs/bootleg/internal/applemusic"
 	"github.com/moudlajs/bootleg/internal/config"
+	"github.com/moudlajs/bootleg/internal/importer"
 )
 
 // version is overwritten at build time with -ldflags "-X main.version=...".
@@ -120,7 +120,7 @@ func report(stderr io.Writer, err error) int {
 		fmt.Fprintln(stderr, authHelp)
 	case errors.Is(err, applemusic.ErrRateLimited):
 		fmt.Fprintln(stderr, "Apple Music is rate limiting requests. Wait a minute, then run again with a larger -delay (e.g. -delay 2s).")
-	case errors.Is(err, errWriteInterrupted):
+	case errors.Is(err, importer.ErrWriteInterrupted):
 		// The error text already says to check the library.
 	case errors.Is(err, context.Canceled):
 		fmt.Fprintln(stderr, "Interrupted before writing; no playlist was created or changed.")
@@ -165,35 +165,9 @@ func resolveVersion(ldflags string, readBuildInfo func() (*debug.BuildInfo, bool
 // already printed the problem and the usage text.
 var errFlagsReported = errors.New("invalid flags")
 
-// targets are the places matched songs go, from -to.
-type targets struct {
-	playlist  bool // create (-name) or append to (-playlist-id) a playlist
-	library   bool // the library ("Songs")
-	favorites bool // the star, i.e. the automatic Favourite Songs playlist
-}
-
-// parseTargets reads -to: a comma-separated list of pl, lib and fav, or
-// their long forms. Order and repeats don't matter.
-func parseTargets(s string) (targets, error) {
-	var t targets
-	for _, part := range strings.Split(s, ",") {
-		switch strings.ToLower(strings.TrimSpace(part)) {
-		case "pl", "playlist":
-			t.playlist = true
-		case "lib", "library":
-			t.library = true
-		case "fav", "favs", "favorites", "favourites":
-			t.favorites = true
-		default:
-			return t, fmt.Errorf("-to: unknown destination %q (use pl, lib, fav, or a comma list like lib,fav)", strings.TrimSpace(part))
-		}
-	}
-	return t, nil
-}
-
 // options are the parsed command-line flags and argument.
 type options struct {
-	to          targets
+	to          importer.Targets
 	name        string
 	storefront  string // empty means "use AM_STOREFRONT or its default"
 	playlistID  string // append here instead of creating a new playlist
@@ -247,18 +221,18 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	if o.delay < 0 {
 		return o, errors.New("-delay must not be negative")
 	}
-	t, err := parseTargets(to)
+	t, err := importer.ParseTargets(to)
 	if err != nil {
-		return o, err
+		return o, fmt.Errorf("-to: %w", err)
 	}
 	o.to = t
 	if o.name != "" && o.playlistID != "" {
 		return o, errors.New("use either -name (create a playlist) or -playlist-id (append to one), not both")
 	}
-	if !o.to.playlist && (o.name != "" || o.playlistID != "") {
+	if !o.to.Playlist && (o.name != "" || o.playlistID != "") {
 		return o, errors.New("-name and -playlist-id are for playlists; add pl to -to (e.g. -to pl,fav)")
 	}
-	if o.to.playlist && o.name == "" && o.playlistID == "" && !o.dryRun {
+	if o.to.Playlist && o.name == "" && o.playlistID == "" && !o.dryRun {
 		return o, errors.New("-to pl needs -name or -playlist-id (or use -dry-run, or -to lib / -to fav)")
 	}
 	return o, nil
