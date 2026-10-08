@@ -166,10 +166,20 @@ if ! gc artifacts docker images describe "$KILL_IMAGE" >/dev/null 2>&1; then
   src="$REGION-docker.pkg.dev/waiverwatch-509716/waiverwatch/waiverwatch:$WW_TAG"
   gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet >/dev/null 2>&1
   docker pull --platform linux/amd64 -q "$src" >/dev/null
+  # Fail now, not at the deploy below, if the release lost /killswitch.
+  cid=$(docker create --platform linux/amd64 "$src")
+  if ! docker cp "$cid:/killswitch" - >/dev/null 2>&1; then
+    docker rm "$cid" >/dev/null
+    echo "waiverwatch $WW_TAG has no /killswitch; pick another tag" >&2
+    exit 1
+  fi
+  docker rm "$cid" >/dev/null
   docker tag "$src" "$KILL_IMAGE"
   docker push -q "$KILL_IMAGE" >/dev/null
   echo "  copied kill switch image from waiverwatch $WW_TAG"
 fi
+# A trail of exactly what guards billing (tags can move).
+echo "  kill switch image digest: $(gc artifacts docker images describe "$KILL_IMAGE" --format 'value(image_summary.digest)')"
 gc run deploy bootleg-killswitch --region "$REGION" --image "$KILL_IMAGE" \
   --command /killswitch --service-account "$KILL_EMAIL" --no-allow-unauthenticated \
   --min-instances 0 --max-instances 1 --cpu 1 --memory 256Mi --timeout 60 \
