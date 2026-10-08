@@ -62,8 +62,12 @@ type Server struct {
 	// 12+ character passphrase is hopeless, fast enough for typos.
 	logins *rate.Limiter
 
-	mu        sync.Mutex
-	usedCodes map[string]time.Time // single-use codes, kept until they expire
+	mu sync.Mutex
+	// usedCodes enforces single-use codes, kept until they expire. It is
+	// per instance and lost on restart, so after a restart or on another
+	// instance a code could be redeemed again within its 2-minute TTL; it
+	// still needs the PKCE verifier, and the service runs one instance.
+	usedCodes map[string]time.Time
 	docs      map[string]cachedDoc // client metadata documents
 }
 

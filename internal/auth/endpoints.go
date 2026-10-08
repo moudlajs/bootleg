@@ -93,8 +93,12 @@ func (s *Server) authorizeSubmit(w http.ResponseWriter, r *http.Request) {
 		page(w, http.StatusBadRequest, pageData{Error: err.Error()})
 		return
 	}
+	// One bucket for everyone: it makes guessing hopeless, at the cost that
+	// someone with the URL could keep the owner from signing in while they
+	// keep failing. Accepted: existing tokens keep working (90 d refresh),
+	// the owner signs in rarely, and nothing is ever let through.
 	if !s.logins.Allow() {
-		page(w, http.StatusTooManyRequests, pageData{Req: req, Error: "Too many attempts. Wait a minute and try again."})
+		page(w, http.StatusTooManyRequests, pageData{Req: req, Error: "Too many attempts. Wait a few seconds and try again."})
 		return
 	}
 	if !s.passphraseOK(r.PostForm.Get("passphrase")) {
