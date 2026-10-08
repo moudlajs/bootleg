@@ -7,7 +7,7 @@
 // CLI). Over HTTP it requires the owner's OAuth sign-in, configured by
 // BOOTLEG_BASE_URL, BOOTLEG_PASSPHRASE and BOOTLEG_SIGNING_KEY; it refuses
 // to start without them. BOOTLEG_NO_AUTH=1 turns sign-in off for local
-// testing only.
+// testing only, and then it listens on 127.0.0.1 only.
 package main
 
 import (
@@ -71,7 +71,13 @@ func run(ctx context.Context, port string) error {
 	if err != nil {
 		return fmt.Errorf("sign-in: %w", err)
 	}
-	return connector.Serve(ctx, ":"+port, connector.HTTPHandler(server, buildVersion(), signIn))
+	addr := ":" + port
+	if signIn == nil {
+		// Without sign-in, only this machine may connect, so a stray
+		// BOOTLEG_NO_AUTH on a hosted instance can't expose Apple Music.
+		addr = "127.0.0.1:" + port
+	}
+	return connector.Serve(ctx, addr, connector.HTTPHandler(server, buildVersion(), signIn))
 }
 
 // signInServer builds the OAuth server from the environment. It returns nil
@@ -79,7 +85,7 @@ func run(ctx context.Context, port string) error {
 // of leaving the owner's Apple Music open to anyone.
 func signInServer() (*auth.Server, error) {
 	if os.Getenv("BOOTLEG_NO_AUTH") == "1" {
-		slog.Warn("BOOTLEG_NO_AUTH=1: anyone who can reach this server can change your Apple Music")
+		slog.Warn("BOOTLEG_NO_AUTH=1: no sign-in; listening on 127.0.0.1 only")
 		return nil, nil
 	}
 	return auth.New(auth.Config{

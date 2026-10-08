@@ -51,8 +51,12 @@ func (c *Client) ListPlaylists(ctx context.Context) ([]Playlist, error) {
 			})
 		}
 		// next is a path with its own query, e.g.
-		// /v1/me/library/playlists?offset=100.
+		// /v1/me/library/playlists?offset=100. Apple drops limit from it
+		// (seen 2026-10-08), so put it back to keep 100 per page.
 		path, q = splitNext(resp.Next)
+		if path != "" && q.Get("limit") == "" {
+			q.Set("limit", "100")
+		}
 	}
 	if path != "" {
 		return nil, fmt.Errorf("more than %d playlists; not reading further", maxPlaylistPages*100)

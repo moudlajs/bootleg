@@ -120,7 +120,7 @@ func TestListPlaylistsFollowsNext(t *testing.T) {
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("ListPlaylists() = %+v, want %+v", got, want)
 	}
-	if len(calls) != 2 || calls[0] != "/v1/me/library/playlists?limit=100" || calls[1] != "/v1/me/library/playlists?offset=100" {
+	if len(calls) != 2 || calls[0] != "/v1/me/library/playlists?limit=100" || calls[1] != "/v1/me/library/playlists?limit=100&offset=100" {
 		t.Errorf("requests = %v", calls)
 	}
 }
