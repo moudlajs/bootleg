@@ -23,10 +23,10 @@ const (
 // DefaultStorefront is used when neither AM_STOREFRONT nor -storefront is set.
 const DefaultStorefront = "us"
 
-// ErrMissingToken is returned by FromEnv when a required token is unset.
+// ErrMissingToken is returned by FromEnv when a token is unset; the wrapping error names the variable, never its value.
 var ErrMissingToken = errors.New("missing token")
 
-// Config holds everything read from the environment; its tokens are never printed or logged.
+// Config holds everything read from the environment. Tokens are redacted by String, GoString, LogValue and JSON.
 type Config struct {
 	DevToken   string `json:"-"`
 	UserToken  string `json:"-"`
