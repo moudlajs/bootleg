@@ -1,0 +1,9 @@
+# Never send tokens or local builds into the image build context.
+.env
+.env.*
+!.env.example
+bin/
+dist/
+coverage.out
+unmatched.txt
+.git/

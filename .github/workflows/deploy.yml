@@ -1,0 +1,103 @@
+name: Deploy
+
+# Builds a release tag's connector image and deploys it to Cloud Run.
+# Called by release.yml, or run by hand (from main) to redeploy any tag,
+# e.g. to roll back.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to deploy, e.g. v0.4.0
+        type: string
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: no keys
+    env:
+      CLOUDSDK_CORE_PROJECT: ${{ vars.GCP_PROJECT_ID }} # every gcloud call below
+      TAG: ${{ inputs.tag }}
+      IMAGE: ${{ vars.GCP_IMAGE }}:${{ inputs.tag }}
+      REGION: ${{ vars.GCP_REGION }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+
+      # The identity provider only accepts tokens for this repository's
+      # main branch and v* tags.
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Build and push
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build --build-arg VERSION="$TAG" -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      # Owner-only: every /mcp call needs the owner's sign-in (passphrase).
+      # The passphrase, signing key and Apple Music tokens come from Secret
+      # Manager at run time; this workflow never sees them. One instance,
+      # scale to zero; the project's budget alert and billing kill switch
+      # cap cost. --timeout covers a 4-minute tool call.
+      - name: Deploy
+        id: deploy
+        env:
+          RUNTIME_SA: ${{ vars.GCP_RUNTIME_SA }}
+          BASE_URL: ${{ vars.BOOTLEG_BASE_URL }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "::error::Set the BOOTLEG_BASE_URL repository variable (deploy/setup.sh does)."
+            exit 1
+          fi
+          gcloud run deploy bootleg \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --service-account "$RUNTIME_SA" \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 1 \
+            --cpu 1 \
+            --memory 256Mi \
+            --concurrency 10 \
+            --timeout 300 \
+            --set-env-vars "BOOTLEG_BASE_URL=$BASE_URL" \
+            --set-secrets "BOOTLEG_SIGNING_KEY=bootleg-signing-key:latest,BOOTLEG_PASSPHRASE=bootleg-passphrase:latest,AM_DEV_TOKEN=bootleg-am-dev-token:latest,AM_USER_TOKEN=bootleg-am-user-token:latest,AM_STOREFRONT=bootleg-am-storefront:latest" \
+            --quiet
+          url=$(gcloud run services describe bootleg --region "$REGION" --format 'value(status.url)')
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "base_url=$BASE_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed $TAG; connector URL $BASE_URL/mcp" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test
+        env:
+          BASE_URL: ${{ steps.deploy.outputs.base_url }}
+        run: |
+          health=$(curl -fsS --retry 5 --retry-all-errors "$BASE_URL/health")
+          echo "$health"
+          test "$health" = "ok $TAG"
+          # Signed out, /mcp must refuse with the challenge that starts sign-in.
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/mcp" -H 'Content-Type: application/json' -d '{}')
+          test "$status" = 401
+          # Discovery must name the URL the owner adds in Claude.
+          resource=$(curl -fsS "$BASE_URL/.well-known/oauth-protected-resource/mcp" | jq -r .resource)
+          test "$resource" = "$BASE_URL/mcp"
