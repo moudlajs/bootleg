@@ -9,7 +9,7 @@
 #   deploy/tokens.sh [path/to/.env] [project-id]
 set -euo pipefail
 ENV_FILE=${1:-.env}
-PROJECT=${2:-waiverwatch-509716}
+PROJECT=${2:-bootleg-638112}
 REGION=europe-west1
 SERVICE=bootleg
 

@@ -109,15 +109,18 @@ waiverwatch, curl-only tests missed a CSP `form-action` bug.
 
 ## Hosting (Cloud Run)
 
-The connector runs as Cloud Run service `bootleg` in the waiverwatch
-project (`waiverwatch-509716`, `europe-west1`), so that project's budget
-alert and billing kill switch cover it. URL:
-`https://bootleg-1006894723977.europe-west1.run.app/mcp`.
+The connector runs as Cloud Run service `bootleg` in its **own project**
+`bootleg-638112` (`europe-west1`), separate from waiverwatch: nothing is
+shared (deploy rights, identities, kill switch). URL:
+`https://bootleg-697142671706.europe-west1.run.app/mcp`. A 25 CZK budget
+alert and a billing kill switch (`bootleg-killswitch`, waiverwatch's
+program copied into this project's registry) cap cost.
 
-- `deploy/setup.sh` (re-runnable): Artifact Registry `bootleg`, runtime SA
-  `bootleg-run` (reads only its secrets), deploy SA `bootleg-deploy`,
-  Workload Identity provider `github-bootleg` (this repo's main and `v*`
-  tags only), the secrets, and the `GCP_*`/`BOOTLEG_BASE_URL` repo vars.
+- `deploy/setup.sh [project] [billing]` (re-runnable): Artifact Registry
+  `bootleg`, runtime SA `bootleg-run` (reads only its secrets), deploy SA
+  `bootleg-deploy`, Workload Identity pool `github` / provider
+  `github-bootleg` (this repo's main and `v*` tags only), the secrets, the
+  budget and kill switch, and the `GCP_*`/`BOOTLEG_BASE_URL` repo vars.
 - Secrets: `bootleg-signing-key` (generated once; rotating signs everyone
   out), `bootleg-passphrase` (`deploy/passphrase.sh`: clipboard + macOS
   Keychain, never printed), `bootleg-am-*` (`deploy/tokens.sh` from `.env`;

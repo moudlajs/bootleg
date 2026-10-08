@@ -8,7 +8,7 @@
 #
 #   deploy/passphrase.sh [project-id]
 set -euo pipefail
-PROJECT=${1:-waiverwatch-509716}
+PROJECT=${1:-bootleg-638112}
 REGION=europe-west1
 SERVICE=bootleg
 
