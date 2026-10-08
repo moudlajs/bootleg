@@ -1,8 +1,7 @@
+# Builds a release tag's connector image and deploys it to Cloud Run.
+# Called by release.yml, or run by hand from main to redeploy or roll back a tag.
 name: Deploy
 
-# Builds a release tag's connector image and deploys it to Cloud Run.
-# Called by release.yml, or run by hand (from main) to redeploy any tag,
-# e.g. to roll back.
 on:
   workflow_call:
     inputs:
@@ -30,7 +29,7 @@ jobs:
       contents: read
       id-token: write # Workload Identity Federation: no keys
     env:
-      CLOUDSDK_CORE_PROJECT: ${{ vars.GCP_PROJECT_ID }} # every gcloud call below
+      CLOUDSDK_CORE_PROJECT: ${{ vars.GCP_PROJECT_ID }}
       TAG: ${{ inputs.tag }}
       IMAGE: ${{ vars.GCP_IMAGE }}:${{ inputs.tag }}
       REGION: ${{ vars.GCP_REGION }}
@@ -39,8 +38,7 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
 
-      # The identity provider only accepts tokens for this repository's
-      # main branch and v* tags.
+      # The identity provider only accepts this repo's main branch and v* tags.
       - uses: google-github-actions/auth@v3
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
@@ -54,11 +52,7 @@ jobs:
           docker build --build-arg VERSION="$TAG" -t "$IMAGE" .
           docker push "$IMAGE"
 
-      # Owner-only: every /mcp call needs the owner's sign-in (passphrase).
-      # The passphrase, signing key and Apple Music tokens come from Secret
-      # Manager at run time; this workflow never sees them. One instance,
-      # scale to zero; the project's budget alert and billing kill switch
-      # cap cost. --timeout covers a 4-minute tool call.
+      # Secrets come from Secret Manager at run time; --timeout 300 covers a 4-minute tool call.
       - name: Deploy
         id: deploy
         env:

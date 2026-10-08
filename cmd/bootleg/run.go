@@ -17,23 +17,15 @@ import (
 	"github.com/moudlajs/bootleg/internal/parser"
 )
 
-// errNothingMatched means no line produced a usable match, so there is
-// nothing to put in a playlist.
 var errNothingMatched = errors.New("no line matched a song; nothing to import")
 
-// errPartial means the run finished but some lines had no match; they are
-// listed in unmatched.txt. It maps to exit code 1.
 var errPartial = errors.New("some lines did not match")
 
-// unmatchedFile is written next to the input file.
 const unmatchedFile = "unmatched.txt"
 
-// errNoSongs means the input file had no song lines at all.
 var errNoSongs = errors.New("no songs found (only blank lines or comments?)")
 
-// run does the actual work: read, search, match, then print or write.
 func run(ctx context.Context, opts options, api *applemusic.Client, stdout io.Writer, log *slog.Logger) error {
-	// parseFlags always sets at least one; this catches a caller that forgot.
 	if opts.to == (importer.Targets{}) && !opts.dryRun {
 		return errors.New("no destination: set -to (pl, lib or fav)")
 	}
@@ -58,9 +50,7 @@ func run(ctx context.Context, opts options, api *applemusic.Client, stdout io.Wr
 		return partial(unmatched, "")
 	}
 
-	// Write the report before writing anything to Apple, so it exists even
-	// if a write fails, or nothing matched at all, and the user wants to fix
-	// lines and retry.
+	// Write the report before touching Apple, so it exists even if a write fails.
 	reportPath := writeUnmatched(opts.file, unmatched, log)
 	if len(ids) == 0 {
 		printSummary(stdout, 0, unmatched, skipped, reportPath)
@@ -70,7 +60,6 @@ func run(ctx context.Context, opts options, api *applemusic.Client, stdout io.Wr
 		return fmt.Errorf("%w (all lines listed in %s)", errNothingMatched, reportPath)
 	}
 
-	// Summary first, so the user sees what matched even if a write fails.
 	printSummary(stdout, len(ids), unmatched, skipped, reportPath)
 	w, err := importer.Write(ctx, api, importer.WriteOptions{
 		To:           opts.to,
@@ -85,8 +74,6 @@ func run(ctx context.Context, opts options, api *applemusic.Client, stdout io.Wr
 	return partial(unmatched, reportPath)
 }
 
-// printWritten says what reached Apple, which after a failure is only part
-// of what was asked for.
 func printWritten(out io.Writer, w importer.Written, name string) {
 	switch {
 	case w.PlaylistCreated:
@@ -102,9 +89,7 @@ func printWritten(out io.Writer, w importer.Written, name string) {
 	}
 }
 
-// resumeHint adds the command that finishes an incomplete write without
-// repeating the playlist step. The storefront is repeated so the re-run
-// matches the same song IDs. The error class (auth, cancel) is kept.
+// resumeHint repeats -storefront so the re-run matches the same song IDs.
 func resumeHint(err error, opts options) error {
 	var inc *importer.IncompleteError
 	if !errors.As(err, &inc) {
@@ -118,8 +103,6 @@ func resumeHint(err error, opts options) error {
 		err, strings.Join(inc.Done, ", "), cmd, opts.file)
 }
 
-// partial returns errPartial, with the count and report location, when
-// any line went unmatched.
 func partial(unmatched []parser.Query, reportPath string) error {
 	switch {
 	case len(unmatched) == 0:
@@ -145,19 +128,11 @@ func printSummary(w io.Writer, matched int, unmatched []parser.Query, skipped in
 	}
 }
 
-// writeUnmatched writes the unmatched lines verbatim to unmatched.txt next
-// to the input, so the file can be edited and used as input again. With
-// nothing unmatched it removes a stale report from an earlier run, unless
-// that report is the input itself. It returns the path written, or "".
-//
-// It never fails the run: the report is a convenience (the summary prints
-// the same lines), so problems are logged as warnings and the playlist is
-// still created.
+// writeUnmatched never fails the run: problems are only logged, since the summary has the same lines.
 func writeUnmatched(input string, unmatched []parser.Query, log *slog.Logger) string {
 	path := filepath.Join(filepath.Dir(input), unmatchedFile)
 
-	// Never touch the input file: when the input is itself unmatched.txt
-	// (a report being re-fed), leave it exactly as the user wrote it.
+	// The input may itself be a re-fed unmatched.txt; never overwrite it.
 	if sameFile(path, input) {
 		if len(unmatched) > 0 {
 			log.Warn("not overwriting the input file with the report; the unmatched lines are in the summary", "path", path)
@@ -166,8 +141,7 @@ func writeUnmatched(input string, unmatched []parser.Query, log *slog.Logger) st
 	}
 
 	if len(unmatched) == 0 {
-		// A missing file is the normal case. Any other failure only leaves
-		// a leftover file behind, which must not cost the user the playlist.
+		// Remove a stale report from an earlier run.
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			log.Warn("could not remove stale report", "path", path, "error", err)
 		}
@@ -187,7 +161,6 @@ func writeUnmatched(input string, unmatched []parser.Query, log *slog.Logger) st
 	return path
 }
 
-// sameFile reports whether a and b name the same existing file.
 func sameFile(a, b string) bool {
 	ai, errA := os.Stat(a)
 	bi, errB := os.Stat(b)
@@ -199,7 +172,7 @@ func readQueries(path string) ([]parser.Query, int, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("open input: %w", err)
 	}
-	defer func() { _ = f.Close() }() // read-only; a close error can't lose data
+	defer func() { _ = f.Close() }()
 
 	queries, skipped, err := parser.Parse(f)
 	if err != nil {
@@ -211,10 +184,7 @@ func readQueries(path string) ([]parser.Query, int, error) {
 	return queries, skipped, nil
 }
 
-// printTable writes the dry-run report as aligned columns.
 func printTable(w io.Writer, lines []importer.Line) error {
-	// tabwriter pads tab-separated cells into columns; nothing is written
-	// until Flush.
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "LINE\tQUERY\tMATCH\tID")
 	for _, l := range lines {

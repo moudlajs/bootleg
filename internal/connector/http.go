@@ -13,25 +13,19 @@ import (
 	"github.com/moudlajs/bootleg/internal/auth"
 )
 
-// Hosted rate limit per instance for signed-in requests: plenty for one
-// person's Claude.
+// Per-instance rate limit for signed-in requests.
 const (
 	requestsPerSecond = 5
 	requestBurst      = 20
 )
 
-// HTTPHandler serves s over stateless Streamable HTTP at /mcp, and /health
-// (reporting the version) for health checks; not /healthz, which Cloud Run
-// reserves. Stateless because hosted instances come and go. With a non-nil
-// signIn, /mcp requires its OAuth access token and its endpoints are served
-// too.
+// HTTPHandler serves s at /mcp (behind signIn when non-nil) and /health, as Cloud Run reserves /healthz.
 func HTTPHandler(s *sdk.Server, version string, signIn *auth.Server) http.Handler {
 	mcpHandler := sdk.NewStreamableHTTPHandler(
 		func(*http.Request) *sdk.Server { return s },
 		&sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true, Logger: slog.Default()},
 	)
-	// The limit sits inside sign-in, so only signed-in requests spend it:
-	// strangers get 401 and can't use up the owner's budget.
+	// Limit inside sign-in so strangers get 401 and can't drain the owner's budget.
 	limiter := rate.NewLimiter(requestsPerSecond, requestBurst)
 	var h http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.Allow() {
@@ -54,17 +48,15 @@ func HTTPHandler(s *sdk.Server, version string, signIn *auth.Server) http.Handle
 	return mux
 }
 
-// Serve serves h on addr until ctx is cancelled, then drains in-flight
-// requests (Cloud Run allows 10 s after SIGTERM).
+// Serve serves h on addr until ctx is cancelled, then drains within Cloud Run's 10 s SIGTERM grace.
 func Serve(ctx context.Context, addr string, h http.Handler) error {
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		// A tool call may take minutes (callTimeout); leave room to answer.
-		WriteTimeout: callTimeout + 30*time.Second,
-		IdleTimeout:  120 * time.Second,
+		WriteTimeout:      callTimeout + 30*time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()

@@ -10,16 +10,14 @@ linters:
     - misspell
   settings:
     errcheck:
-      # Writes to stdout/stderr: if the terminal is gone there is no one to
-      # report to. Where it matters (tabwriter.Flush) the error is checked.
+      # Terminal writes: nobody to report to if they fail.
       exclude-functions:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
   exclusions:
     rules:
-      # Tests use fake tokens and httptest URLs; gosec's hardcoded-credential
-      # and SSRF-style checks are noise there.
+      # Fake tokens and httptest URLs in tests trip gosec.
       - path: _test\.go
         linters: [gosec]
 

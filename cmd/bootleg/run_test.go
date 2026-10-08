@@ -23,8 +23,7 @@ import (
 	"github.com/moudlajs/bootleg/internal/importer"
 )
 
-// fakeAPI is an httptest server that answers search by term and records
-// every playlist creation.
+// fakeAPI answers search by term and records every write.
 type fakeAPI struct {
 	mu       sync.Mutex // the handler runs on the server's goroutines
 	posts    int
@@ -151,9 +150,7 @@ func TestRunDryRunCreatesNothing(t *testing.T) {
 	}
 }
 
-// TestRunPartial: one of three lines is unmatched. The playlist is still
-// created from the rest, the line goes to unmatched.txt, and run reports
-// errPartial (exit 1).
+// One of three lines unmatched: playlist still created, line in unmatched.txt, errPartial.
 func TestRunPartial(t *testing.T) {
 	f, api, path := setup(t, input)
 	var out bytes.Buffer
@@ -174,8 +171,7 @@ func TestRunPartial(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("unmatched.txt not written: %v", readErr)
 	}
-	// Comment header, then the unmatched line verbatim, so the file parses
-	// back into exactly that one query.
+	// Comment header then the line verbatim, so it parses back into that one query.
 	if !strings.HasSuffix(string(got), "\nNobody - Nothing\n") || !strings.HasPrefix(string(got), "# ") {
 		t.Errorf("unmatched.txt =\n%s", got)
 	}
@@ -201,8 +197,7 @@ func TestRunAllMatchedRemovesStaleReport(t *testing.T) {
 	}
 }
 
-// A leftover report that can't be removed (here: a non-empty directory
-// with that name) must not stop the playlist being created.
+// An unremovable leftover report (a non-empty directory) must not block the playlist.
 func TestRunStaleReportRemovalFailureIsNotFatal(t *testing.T) {
 	f, api, path := setup(t, "Portishead - Glory Box\n")
 	blocker := filepath.Join(filepath.Dir(path), unmatchedFile)
@@ -218,8 +213,7 @@ func TestRunStaleReportRemovalFailureIsNotFatal(t *testing.T) {
 	}
 }
 
-// Same for a partial run whose report can't be written: the matched songs
-// still become a playlist, and the unmatched lines are in the summary.
+// An unwritable report still yields the playlist, with unmatched lines in the summary.
 func TestRunReportWriteFailureIsNotFatal(t *testing.T) {
 	f, api, path := setup(t, input)
 	blocker := filepath.Join(filepath.Dir(path), unmatchedFile)
@@ -240,8 +234,7 @@ func TestRunReportWriteFailureIsNotFatal(t *testing.T) {
 	}
 }
 
-// A create that fails after a partial match still shows the summary and
-// leaves the report on disk.
+// A failed create after a partial match still shows the summary and keeps the report.
 func TestRunCreateFailureStillSummarises(t *testing.T) {
 	f := &fakeAPI{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -271,8 +264,7 @@ func TestRunCreateFailureStillSummarises(t *testing.T) {
 	}
 }
 
-// Re-feeding an unmatched.txt that still has a bad line must not overwrite
-// (truncate) the input.
+// Re-feeding an unmatched.txt that still has a bad line must not truncate the input.
 func TestRunPartialNeverOverwritesInput(t *testing.T) {
 	f, api, _ := setup(t, "")
 	path := filepath.Join(t.TempDir(), unmatchedFile)
@@ -398,8 +390,7 @@ func TestCLIFlags(t *testing.T) {
 	}
 }
 
-// TestCLIEndToEnd drives cli() through config loading, the storefront
-// fallback and client wiring, against the fake API.
+// TestCLIEndToEnd covers config loading, the storefront fallback and client wiring.
 func TestCLIEndToEnd(t *testing.T) {
 	f := &fakeAPI{}
 	var storefrontPath string
@@ -446,9 +437,7 @@ func TestCLIFlagErrorPrintedOnce(t *testing.T) {
 	}
 }
 
-// cliRun runs cli() in a temp dir with input.txt holding input, tokens set
-// (unless noTokens), and the API answered by handler. It returns the exit
-// code and stderr.
+// cliRun runs cli() in a temp dir on input.txt against handler; returns exit code and stderr.
 func cliRun(t *testing.T, handler http.HandlerFunc, input string, noTokens bool, args ...string) (int, string) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -536,9 +525,7 @@ func TestRunWaitsBetweenSearches(t *testing.T) {
 	}
 }
 
-// TestRunCancelledMidRun cancels the context while the first search is in
-// flight, as Ctrl-C would, and checks the run stops without creating
-// anything - even though the next step is a long -delay.
+// Ctrl-C during the first search stops the run before any write, despite a long -delay.
 func TestRunCancelledMidRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -622,16 +609,14 @@ func TestRunAppendsInsteadOfCreating(t *testing.T) {
 	}
 }
 
-// Ctrl-C while the create request is in flight: Apple may have applied it,
-// so the error must not claim nothing changed.
+// Ctrl-C mid-create: Apple may have applied it, so the error must not claim nothing changed.
 func TestRunInterruptedDuringCreate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	f := &fakeAPI{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			// The server only notices a dropped connection once the body
-			// has been read, so read it first.
+			// The server only notices a dropped connection after reading the body.
 			_, _ = io.Copy(io.Discard, r.Body)
 			cancel() // Ctrl-C mid-request; the client sees context.Canceled
 			select {
@@ -723,8 +708,7 @@ func TestRunAllThreeTargets(t *testing.T) {
 	}
 }
 
-// A failure part-way through favouriting reports how far it got, and keeps
-// the error class (here auth) for the exit code.
+// A failure part-way through favouriting reports progress and keeps the error class.
 func TestRunFavoriteFailsPartWay(t *testing.T) {
 	f := &fakeAPI{}
 	var favCalls atomic.Int32
@@ -762,8 +746,7 @@ func TestRunWithoutTargetsRefuses(t *testing.T) {
 	}
 }
 
-// With pl,lib,fav, a failure at the library step must not suggest
-// re-running pl (that would create a second playlist).
+// With pl,lib,fav, a library failure must not suggest re-running pl (a second playlist).
 func TestRunPartialWriteSaysHowToFinish(t *testing.T) {
 	f := &fakeAPI{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -798,8 +781,7 @@ func TestRunPartialWriteSaysHowToFinish(t *testing.T) {
 	}
 }
 
-// Ctrl-C while waiting between favourites stops at once, and the error says
-// the outcome is uncertain (earlier favourites were applied).
+// Ctrl-C between favourites stops at once and says the outcome is uncertain.
 func TestRunCancelledBetweenFavorites(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -807,9 +789,7 @@ func TestRunCancelledBetweenFavorites(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.handler(w, r)
 		if r.Method == http.MethodPut {
-			// "Ctrl-C" shortly after the first favourite's response, i.e.
-			// inside the 1s wait before the second. Cancelling in the
-			// handler itself could abort the client's read of this response.
+			// Cancel after the response, not in the handler, which could abort the client's read.
 			go func() { time.Sleep(100 * time.Millisecond); cancel() }()
 		}
 	}))
@@ -821,8 +801,7 @@ func TestRunCancelledBetweenFavorites(t *testing.T) {
 	}
 
 	start := time.Now()
-	// -delay also paces the two searches (1s total); the wait after the first
-	// favourite would be another second, but Ctrl-C cuts it short.
+	// 1s for the paced searches; Ctrl-C cuts the wait after the first favourite short.
 	err := run(ctx, options{to: importer.Targets{Favorites: true}, delay: time.Second, file: path}, api, io.Discard, discardLogger())
 	if !errors.Is(err, importer.ErrWriteInterrupted) || !strings.Contains(err.Error(), "favourite 2 of 2") {
 		t.Fatalf("run() error = %v, want importer.ErrWriteInterrupted at favourite 2 of 2", err)

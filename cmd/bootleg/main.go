@@ -1,5 +1,5 @@
-// Command bootleg creates an Apple Music library playlist from a text file
-// of "Artist - Title" lines, using the web player's tokens.
+// Command bootleg adds the songs in a text file of "Artist - Title" lines to
+// an Apple Music playlist, the Library or Favourite Songs.
 package main
 
 import (
@@ -22,12 +22,10 @@ import (
 	"github.com/moudlajs/bootleg/internal/importer"
 )
 
-// version is overwritten at build time with -ldflags "-X main.version=...".
-// It must be a package-level var (not a const) for -X to work.
+// version is set at build time with -ldflags "-X main.version=..." (a var, since -X can't set a const).
 var version = "dev"
 
-// Exit codes. See the table in docs/cli.md and CLAUDE.md; exitCode maps
-// errors onto them.
+// Exit codes; see docs/cli.md.
 const (
 	exitOK    = 0
 	exitError = 1 // partial (errPartial), or any other failure
@@ -35,8 +33,7 @@ const (
 	exitInput = 3
 )
 
-// authHelp is printed when Apple rejects the tokens. It names the steps and
-// the variables, never the token values.
+// authHelp names the token variables, never their values.
 var authHelp = fmt.Sprintf(`Apple Music rejected your web-player tokens; they have probably expired.
 Refresh them:
   1. Open https://music.apple.com in a browser and sign in.
@@ -48,24 +45,18 @@ Refresh them:
 Step by step: docs/tokens.md in the bootleg repository.`, config.EnvDevToken, config.EnvUserToken)
 
 func main() {
-	// os.Exit skips deferred calls, so the work happens in realMain, whose
-	// defers run before we exit with its result.
+	// os.Exit skips defers, so realMain's defers must run first.
 	os.Exit(realMain())
 }
 
 func realMain() int {
-	// Ctrl-C (SIGINT) or SIGTERM cancels ctx. Every request and every wait
-	// between requests watches ctx, so the run stops promptly and no
-	// playlist is created. stop() restores default signal handling, so a
-	// second Ctrl-C kills the process outright.
+	// Ctrl-C or SIGTERM cancels ctx, which every request and wait watches.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return cli(ctx, os.Args[1:], os.Stdout, os.Stderr, applemusic.DefaultBaseURL)
 }
 
-// cli parses flags, builds dependencies, calls run and maps its error to an
-// exit code. It takes everything it touches as arguments, including the API
-// base URL, so tests can drive it end to end against an httptest.Server.
+// cli takes everything as arguments, including the base URL, so tests can drive it end to end.
 func cli(ctx context.Context, args []string, stdout, stderr io.Writer, baseURL string) int {
 	opts, err := parseFlags(args, stderr)
 	if errors.Is(err, flag.ErrHelp) {
@@ -110,8 +101,6 @@ func cli(ctx context.Context, args []string, stdout, stderr io.Writer, baseURL s
 	return exitOK
 }
 
-// report prints err, plus advice for the errors a user can act on, and
-// returns the matching exit code.
 func report(stderr io.Writer, err error) int {
 	fmt.Fprintf(stderr, "bootleg: %v\n", err)
 	code := exitCode(err)
@@ -128,8 +117,6 @@ func report(stderr io.Writer, err error) int {
 	return code
 }
 
-// exitCode maps an error from config or run onto an exit code.
-// errors.Is and errors.As look through every %w wrapping layer.
 func exitCode(err error) int {
 	var pathErr *fs.PathError
 	switch {
@@ -146,10 +133,7 @@ func exitCode(err error) int {
 	}
 }
 
-// resolveVersion returns the -ldflags version for release builds. For
-// `go install ...@v1.2.3`, which can't set ldflags, it falls back to the
-// module version Go records in the binary. readBuildInfo is a parameter
-// (normally debug.ReadBuildInfo) so tests can supply their own.
+// resolveVersion falls back to the module version for `go install ...@v1.2.3`, which can't set ldflags.
 func resolveVersion(ldflags string, readBuildInfo func() (*debug.BuildInfo, bool)) string {
 	if ldflags != "dev" {
 		return ldflags
@@ -161,18 +145,15 @@ func resolveVersion(ldflags string, readBuildInfo func() (*debug.BuildInfo, bool
 	return ldflags
 }
 
-// errFlagsReported means flag parsing failed and the flag package has
-// already printed the problem and the usage text.
 var errFlagsReported = errors.New("invalid flags")
 
-// options are the parsed command-line flags and argument.
 type options struct {
 	to          importer.Targets
 	name        string
 	storefront  string // empty means "use AM_STOREFRONT or its default"
 	playlistID  string // append here instead of creating a new playlist
 	dryRun      bool
-	delay       time.Duration // pause between search requests
+	delay       time.Duration
 	verbose     bool
 	showVersion bool
 	file        string
@@ -181,8 +162,7 @@ type options struct {
 func parseFlags(args []string, stderr io.Writer) (options, error) {
 	var o options
 	var to string
-	// A FlagSet of our own with ContinueOnError returns errors instead of
-	// calling os.Exit(2), which would collide with our auth exit code.
+	// ContinueOnError returns errors instead of calling os.Exit(2), which would collide with exitAuth.
 	fset := flag.NewFlagSet("bootleg", flag.ContinueOnError)
 	fset.SetOutput(stderr)
 	fset.StringVar(&to, "to", "pl", "where matched songs go: pl (playlist), lib (Library), fav (Favourite Songs), or a comma list like lib,fav")

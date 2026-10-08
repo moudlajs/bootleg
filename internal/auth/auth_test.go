@@ -24,9 +24,7 @@ func challenge(v string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-// setup runs a fake client metadata host and the auth server behind a mux
-// with a protected /mcp. It returns the auth server's URL, the client_id,
-// and the server.
+// setup runs a fake client metadata host and the auth server with a protected /mcp.
 func setup(t *testing.T) (string, string, *Server) {
 	t.Helper()
 	var clientID string
@@ -64,8 +62,7 @@ func authorizeParams(clientID string) url.Values {
 
 var noRedirect = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
-// signIn posts the passphrase and returns the status and, on success, where
-// it redirects.
+// signIn posts the passphrase and returns the status and redirect location.
 func signIn(t *testing.T, base string, form url.Values) (int, *url.URL) {
 	t.Helper()
 	resp, err := noRedirect.PostForm(base+"/authorize", form)

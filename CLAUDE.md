@@ -11,8 +11,11 @@ It uses the Apple Music web player's tokens and private
 `amp-api.music.apple.com` endpoints, not MusicKit, so no paid developer
 account is needed. The user supplies the tokens.
 
-The maintainer is experienced in backend/infra but new to Go. Write
-idiomatic, boring Go, and explain non-obvious idioms in a short comment.
+Write idiomatic, boring Go. **Comments are sparse:** a brief header per
+file or package, a one-line doc comment on exported identifiers, and one
+line elsewhere only where something is tricky (a regex, a surprising API
+behaviour, a bug workaround with its issue number). No restating the code,
+no history, no essays.
 
 ## The rules
 

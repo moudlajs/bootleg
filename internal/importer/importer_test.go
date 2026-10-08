@@ -17,8 +17,7 @@ import (
 	"github.com/moudlajs/bootleg/internal/parser"
 )
 
-// fake answers search from a tiny catalog and records writes. failOn makes
-// one endpoint ("library", "fav", "create") answer 401.
+// fake answers search from a tiny catalog and records writes; failOn makes one endpoint 401.
 type fake struct {
 	mu      sync.Mutex
 	failOn  string

@@ -8,13 +8,10 @@ import (
 	"strings"
 )
 
-// separator splits artist from title. Only the first occurrence counts, so a
-// title that itself contains " - " (e.g. "Song - Remastered") stays intact.
+// separator splits artist from title; only the first one counts ("Song - Remastered").
 const separator = " - "
 
-// bom is the UTF-8 byte order mark some editors (notably Windows Notepad)
-// put at the start of a file. Go strings are bytes, so "\uFEFF" is those
-// three bytes: EF BB BF.
+// bom is the UTF-8 byte order mark Windows Notepad puts at the start of a file.
 const bom = "\uFEFF"
 
 // Query is one song to look up.
@@ -33,14 +30,10 @@ func (q Query) Term() string {
 	return q.Artist + " " + q.Title
 }
 
-// Parse reads r line by line and returns a Query for every line that is not
-// blank and not a # comment, plus how many lines were skipped as blank or
-// comments (for the end-of-run summary).
+// Parse reads queries from r, skipping (and counting) blank and # comment lines.
 func Parse(r io.Reader) (queries []Query, skipped int, err error) {
 
-	// bufio.Scanner's default split function (ScanLines) strips both "\n"
-	// and a preceding "\r", so CRLF files need no special handling here.
-	// TrimSpace below only trims incidental whitespace around the content.
+	// ScanLines already drops a trailing \r, so CRLF needs nothing extra.
 	sc := bufio.NewScanner(r)
 	for n := 1; sc.Scan(); n++ {
 		line := sc.Text()
@@ -54,7 +47,6 @@ func Parse(r io.Reader) (queries []Query, skipped int, err error) {
 		}
 
 		q := Query{Raw: line, Line: n, Title: line}
-		// strings.Cut splits around the first separator; ok is false if absent.
 		if artist, title, ok := strings.Cut(line, separator); ok {
 			q.Artist = strings.TrimSpace(artist)
 			q.Title = strings.TrimSpace(title)

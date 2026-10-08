@@ -1,13 +1,5 @@
-// Command bootleg-mcp serves bootleg as an MCP connector for Claude. It
-// speaks MCP over stdio for local clients (Claude Code, Claude Desktop), or
-// over HTTP at /mcp when PORT is set (Cloud Run).
-//
-// Apple Music tokens come from AM_DEV_TOKEN, AM_USER_TOKEN and
-// AM_STOREFRONT (a .env in the working directory works too, as for the
-// CLI). Over HTTP it requires the owner's OAuth sign-in, configured by
-// BOOTLEG_BASE_URL, BOOTLEG_PASSPHRASE and BOOTLEG_SIGNING_KEY; it refuses
-// to start without them. BOOTLEG_NO_AUTH=1 turns sign-in off for local
-// testing only, and then it listens on 127.0.0.1 only.
+// Command bootleg-mcp serves bootleg as an MCP connector: over stdio, or HTTP at /mcp when PORT is set.
+// Over HTTP it requires OAuth sign-in (BOOTLEG_*); BOOTLEG_NO_AUTH=1 drops it and binds 127.0.0.1.
 package main
 
 import (
@@ -29,18 +21,16 @@ import (
 	"github.com/moudlajs/bootleg/internal/connector"
 )
 
-// delay between Apple requests: a little quicker than the CLI's default,
-// since a chat is waiting, still clearly human-paced.
+// delay is quicker than the CLI's default since a chat is waiting, but still human-paced.
 const delay = 300 * time.Millisecond
 
-// version is set at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// On stdio, stdout carries the MCP protocol; logs go to stderr.
+	// On stdio, stdout carries the MCP protocol.
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	if err := run(ctx, os.Getenv("PORT")); err != nil {
 		fmt.Fprintln(os.Stderr, "bootleg-mcp:", err)
@@ -73,16 +63,13 @@ func run(ctx context.Context, port string) error {
 	}
 	addr := ":" + port
 	if signIn == nil {
-		// Without sign-in, only this machine may connect, so a stray
-		// BOOTLEG_NO_AUTH on a hosted instance can't expose Apple Music.
+		// Bind 127.0.0.1 without sign-in, so a stray BOOTLEG_NO_AUTH can't expose Apple Music.
 		addr = "127.0.0.1:" + port
 	}
 	return connector.Serve(ctx, addr, connector.HTTPHandler(server, buildVersion(), signIn))
 }
 
-// signInServer builds the OAuth server from the environment. It returns nil
-// only when BOOTLEG_NO_AUTH=1, so a missing secret stops the server instead
-// of leaving the owner's Apple Music open to anyone.
+// signInServer returns nil only when BOOTLEG_NO_AUTH=1, so a missing secret fails closed.
 func signInServer() (*auth.Server, error) {
 	if os.Getenv("BOOTLEG_NO_AUTH") == "1" {
 		slog.Warn("BOOTLEG_NO_AUTH=1: no sign-in; listening on 127.0.0.1 only")
@@ -95,8 +82,7 @@ func signInServer() (*auth.Server, error) {
 	})
 }
 
-// buildVersion is the ldflags version for release builds, else the module
-// version for `go install`, else "dev".
+// buildVersion is the ldflags version, else the module version for `go install`, else "dev".
 func buildVersion() string {
 	if version != "dev" {
 		return version

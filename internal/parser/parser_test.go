@@ -41,8 +41,7 @@ func TestParse(t *testing.T) {
 			want:  []Query{{Title: "teardrop massive attack", Raw: "teardrop massive attack", Line: 1}},
 		},
 		{
-			// TrimSpace runs before Cut, so a leading or trailing " - " loses its
-			// outer space and is no longer a separator: Artist stays empty.
+			// TrimSpace runs before Cut, so an edge " - " is no longer a separator.
 			name:  "separator at the edges is not a split",
 			input: " - Title\nArtist - \n",
 			want: []Query{

@@ -1,7 +1,5 @@
-// Package importer is bootleg's engine: it searches the catalog for song
-// queries, picks the best match for each, and writes the matches to a
-// playlist, the library and/or Favourite Songs. The CLI and the connector
-// both use it; it never prints and never touches files.
+// Package importer matches song queries against the catalog and writes the
+// matches to a playlist, the library and/or Favourite Songs; it never prints.
 package importer
 
 import (
@@ -17,8 +15,7 @@ import (
 	"github.com/moudlajs/bootleg/internal/parser"
 )
 
-// ErrWriteInterrupted means the context was cancelled while a write was in
-// flight, so Apple may or may not have applied it.
+// ErrWriteInterrupted means a write was cancelled in flight, so Apple may have applied it.
 var ErrWriteInterrupted = errors.New("interrupted while writing; check your library, the change may have been applied")
 
 // Targets are the places matched songs go.
@@ -28,8 +25,7 @@ type Targets struct {
 	Favorites bool // the star, i.e. the automatic Favourite Songs playlist
 }
 
-// ParseTargets reads a comma-separated list of pl, lib and fav, or their
-// long forms. Order, case and repeats don't matter.
+// ParseTargets reads a comma-separated list of pl, lib and fav (or long forms).
 func ParseTargets(s string) (Targets, error) {
 	var t Targets
 	for _, part := range strings.Split(s, ",") {
@@ -47,17 +43,14 @@ func ParseTargets(s string) (Targets, error) {
 	return t, nil
 }
 
-// Line is one query and the song chosen for it. OK is false when no search
-// result was acceptable.
+// Line is one query and the song chosen for it, if any.
 type Line struct {
 	Query parser.Query
 	Song  applemusic.Song
 	OK    bool
 }
 
-// Resolve searches for each query in order and picks the best result. It is
-// sequential on purpose, pausing delay between searches so the traffic looks
-// like a person using the web player, not a scraper.
+// Resolve searches sequentially, pausing delay between queries so traffic looks like a person.
 func Resolve(ctx context.Context, api *applemusic.Client, storefront string, delay time.Duration, queries []parser.Query, log *slog.Logger) ([]Line, error) {
 	lines := make([]Line, 0, len(queries))
 	for i, q := range queries {
@@ -96,8 +89,7 @@ func resolve(ctx context.Context, api *applemusic.Client, storefront string, q p
 	return Line{Query: q, Song: songs[i], OK: true}, nil
 }
 
-// Split returns the matched song IDs, in input order, and the unmatched
-// queries.
+// Split returns the matched song IDs, in input order, and the unmatched queries.
 func Split(lines []Line) (ids []string, unmatched []parser.Query) {
 	for _, l := range lines {
 		if l.OK {
@@ -126,9 +118,7 @@ type Written struct {
 	Favorites       int    // songs favourited
 }
 
-// IncompleteError means Write stopped after at least one destination was
-// done. Done and Rest name destinations ("playlist", "lib", "fav") so the
-// caller can say how to finish without repeating the playlist step.
+// IncompleteError means Write stopped after at least one destination was done.
 type IncompleteError struct {
 	Done []string // completed: "playlist", "library"
 	Rest []string // still to do, as -to values: "lib", "fav"
@@ -140,10 +130,7 @@ func (e *IncompleteError) Error() string { return e.Err.Error() }
 // Unwrap keeps the cause visible to errors.Is (auth, rate limit, cancel).
 func (e *IncompleteError) Unwrap() error { return e.Err }
 
-// Write sends ids to each destination in opts.To, in a fixed order:
-// playlist, library, favourites. It stops at the first error. Favourites
-// are idempotent, so repeating that step is safe; repeating the playlist
-// step would create a second playlist, which IncompleteError helps avoid.
+// Write sends ids to playlist, library, then favourites, stopping at the first error.
 func Write(ctx context.Context, api *applemusic.Client, opts WriteOptions, ids []string, log *slog.Logger) (Written, error) {
 	var w Written
 	var done, rest []string
@@ -208,8 +195,6 @@ func Write(ctx context.Context, api *applemusic.Client, opts WriteOptions, ids [
 	return w, nil
 }
 
-// writeErr marks a cancellation during a write, where the outcome on
-// Apple's side is unknown, so it isn't reported as "nothing was changed".
 func writeErr(err error) error {
 	if errors.Is(err, context.Canceled) {
 		return fmt.Errorf("%w: %w", ErrWriteInterrupted, err)
@@ -217,8 +202,7 @@ func writeErr(err error) error {
 	return err
 }
 
-// Sleep waits for d, or returns early with ctx's error if ctx is cancelled
-// first. time.Sleep can't be interrupted, so it would delay Ctrl-C.
+// Sleep waits for d, or returns ctx's error early if ctx is cancelled.
 func Sleep(ctx context.Context, d time.Duration) error {
 	if d <= 0 {
 		return ctx.Err()

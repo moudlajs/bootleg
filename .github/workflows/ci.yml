@@ -1,3 +1,4 @@
+# Tests, lint, release-config check and PR title/branch conventions on PRs and main.
 name: CI
 
 on:
@@ -55,13 +56,11 @@ jobs:
           cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
-          # Pinned so a new linter release cannot turn main red on its own.
-          # Dependabot does not bump this; do it deliberately.
+          # Pinned so a new linter release can't turn main red; bump deliberately.
           version: v2.13.2
 
   goreleaser-check:
-    # Validates .goreleaser.yml on every PR, so a broken release config is
-    # caught here and not when a tag is pushed.
+    # Catches a broken .goreleaser.yml before a tag push does.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -70,8 +69,7 @@ jobs:
           version: "~> v2"
           args: check
 
-  # The single job branch protection requires. Matrix job names change when
-  # the matrix does; this one never does.
+  # The one job branch protection requires: its name, unlike matrix jobs', never changes.
   check:
     if: always()
     needs: [test, lint, goreleaser-check]
@@ -83,8 +81,7 @@ jobs:
           [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = "false" ]
 
   conventions:
-    # The PR title becomes the squash commit subject on main, so it is the
-    # thing that has to follow Conventional Commits. See CONTRIBUTING.md.
+    # The PR title becomes the squash commit subject, so it must be a Conventional Commit.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
