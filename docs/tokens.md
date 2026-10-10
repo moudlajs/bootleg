@@ -34,6 +34,9 @@ library. `.env` is never committed, and bootleg never prints or logs them.
 
 ## Refreshing them
 
+The developer token carries its expiry date: from two weeks before it, the
+command line warns you and Claude tells you.
+
 When Apple rejects the tokens, the command line exits with code 2 and Claude
 tells you. Repeat the steps above; usually only `AM_USER_TOKEN` changes.
 For the hosted connector, then run:

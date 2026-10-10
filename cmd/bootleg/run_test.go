@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -20,6 +22,7 @@ import (
 	"time"
 
 	"github.com/moudlajs/bootleg/internal/applemusic"
+	"github.com/moudlajs/bootleg/internal/config"
 	"github.com/moudlajs/bootleg/internal/importer"
 )
 
@@ -826,5 +829,32 @@ func TestRunDryRunWritesNothingAnywhere(t *testing.T) {
 	defer f.mu.Unlock()
 	if f.posts+f.appends+len(f.library)+len(f.favs) != 0 {
 		t.Errorf("dry run wrote: creates %d, appends %d, library %v, favs %v", f.posts, f.appends, f.library, f.favs)
+	}
+}
+
+func TestWarnExpiry(t *testing.T) {
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	token := func(exp time.Time) config.Config {
+		payload := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"exp":%d}`, exp.Unix())))
+		return config.Config{DevToken: "h." + payload + ".s"}
+	}
+	tests := []struct {
+		name string
+		cfg  config.Config
+		want string
+	}{
+		{"far off", token(now.AddDate(0, 2, 0)), ""},
+		{"soon", token(now.AddDate(0, 0, 5)), "expires on 2026-10-15, in 5 days"},
+		{"expired", token(now.AddDate(0, 0, -1)), "expired on 2026-10-09"},
+		{"unreadable", config.Config{DevToken: "opaque"}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			warnExpiry(&out, tt.cfg, now)
+			if (tt.want == "" && out.Len() != 0) || !strings.Contains(out.String(), tt.want) {
+				t.Errorf("warnExpiry() = %q, want %q", out.String(), tt.want)
+			}
+		})
 	}
 }
