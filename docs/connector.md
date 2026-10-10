@@ -19,6 +19,8 @@ every request needs that sign-in.
 - A screenshot of a tracklist and *"Make a playlist called Gym from this"*
 - *"Put Massive Attack - Teardrop in my Road trip playlist"*
 - *"Add these to my library:"* followed by a list
+- *"Add Takk… by Sigur Rós to my favourites"*: a whole album
+- *"Remove those from my favourites again"*: undo
 
 Lists can be messy: links, bullets, lowercase names. Claude turns them into
 one song per line first.
@@ -30,6 +32,11 @@ one song per line first.
 - Up to 50 songs per request; Claude splits longer lists.
 - It adds to an existing playlist when you name one, and never creates a
   second playlist with a name you already have.
+- When a song isn't found, Claude suggests the closest matches ("did you
+  mean…?") and adds the one you pick.
+- Removing asks for confirmation first; songs that weren't there are just
+  reported.
+- From two weeks before your developer token expires, Claude warns you.
 - **Favourites take a few minutes to appear** on your devices (iCloud syncs
   them more slowly than playlists). Apple has them right away; adding them
   again changes nothing.
@@ -44,8 +51,10 @@ reconnect (Settings → Connectors) and start a new chat.
 
 | Tool | Does |
 |---|---|
-| `preview_songs` | Looks songs up; changes nothing |
+| `preview_songs` | Looks songs up, with suggestions for misses; changes nothing |
 | `add_songs` | Adds to a playlist (`pl`), the Library (`lib`) and/or Favourite Songs (`fav`) |
+| `remove_songs` | Removes from those again |
+| `album_tracks` | Finds an album and lists its tracks |
 | `list_playlists` | Your playlists and their IDs |
 
 ## Running it locally
