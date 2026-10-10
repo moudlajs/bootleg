@@ -47,11 +47,13 @@ func run(ctx context.Context, port string) error {
 		return err
 	}
 	api := applemusic.New(&http.Client{Timeout: 30 * time.Second}, applemusic.DefaultBaseURL, cfg.DevToken, cfg.UserToken)
+	exp, _ := cfg.DevTokenExpires()
 	server := connector.NewServer(&connector.Service{
-		API:        api,
-		Storefront: cfg.Storefront,
-		Delay:      delay,
-		Log:        slog.Default(),
+		TokenExpires: exp,
+		API:          api,
+		Storefront:   cfg.Storefront,
+		Delay:        delay,
+		Log:          slog.Default(),
 	}, buildVersion())
 
 	if port == "" {
