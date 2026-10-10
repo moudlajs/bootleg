@@ -215,6 +215,10 @@ func (s *Service) add(ctx context.Context, in AddInput) (AddOutput, error) {
 	if err != nil {
 		return AddOutput{}, err
 	}
+	// Fail before spending paced searches on a call that can't fit.
+	if len(byID) > maxSongs || (len(byID) == maxSongs && strings.TrimSpace(in.Songs) != "") {
+		return AddOutput{}, fmt.Errorf("more than %d songs per call; split the list and send it in parts", maxSongs)
+	}
 	var lines []importer.Line
 	switch {
 	case strings.TrimSpace(in.Songs) != "":

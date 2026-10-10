@@ -22,12 +22,13 @@ import (
 
 // fakeApple serves a two-song catalog and a "Road trip" playlist; status, if set, answers everything.
 type fakeApple struct {
-	mu      sync.Mutex
-	status  int
-	failFav bool
-	created []string
-	library []string
-	favs    []string
+	mu       sync.Mutex
+	status   int
+	failFav  bool
+	searches int
+	created  []string
+	library  []string
+	favs     []string
 }
 
 var catalog = map[string][2]string{ // search term -> id, "Artist|Title"
@@ -45,6 +46,7 @@ func (f *fakeApple) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/search"):
+		f.searches++
 		data := []any{}
 		if e, ok := catalog[r.URL.Query().Get("term")]; ok {
 			artist, title, _ := strings.Cut(e[1], "|")
@@ -355,7 +357,7 @@ func TestPreviewOffersAlternatives(t *testing.T) {
 		t.Fatalf("error: %s", e)
 	}
 	if len(out.Unmatched) != 1 || len(out.Unmatched[0].Alternatives) != 1 || out.Unmatched[0].Alternatives[0].ID != "1001" {
-		t.Fatalf("unmatched = %+v, want Glory Box (p1) offered", out.Unmatched)
+		t.Fatalf("unmatched = %+v, want Glory Box (1001) offered", out.Unmatched)
 	}
 }
 
@@ -368,7 +370,7 @@ func TestAddBySongIDs(t *testing.T) {
 	if e != "" {
 		t.Fatalf("error: %s", e)
 	}
-	// b1 comes from the line and is not added twice.
+	// 1002 comes from the line and is not added twice.
 	if out.Matched != 2 || strings.Join(f.library, ";") != "1002,1001" {
 		t.Errorf("out = %+v, library %v", out, f.library)
 	}
@@ -390,8 +392,8 @@ func TestAddCapsCombinedSongs(t *testing.T) {
 	f := &fakeApple{}
 	// 50 IDs plus one matched line is 51 songs.
 	e := call(t, connect(t, newService(t, f)), "add_songs", map[string]any{"songs": "Björk - Army of Me", "song_ids": ids, "to": []string{"lib"}}, &AddOutput{})
-	if !strings.Contains(e, "more than 50") || len(f.library) != 0 {
-		t.Errorf("error %q, library %v", e, f.library)
+	if !strings.Contains(e, "more than 50") || len(f.library) != 0 || f.searches != 0 {
+		t.Errorf("error %q, library %v, searches %d (want none)", e, f.library, f.searches)
 	}
 }
 
