@@ -6,13 +6,33 @@ import (
 	"net/url"
 )
 
-// Unfavorite removes a song's favourite (its rating). Not favourited is not an error.
+type ratingResponse struct {
+	Data []struct {
+		Attributes struct {
+			Value int `json:"value"`
+		} `json:"attributes"`
+	} `json:"data"`
+}
+
+// Unfavorite removes a song's favourite. It reads the rating first: DELETE
+// answers 204 even when there was none, and a dislike (-1) is left alone.
 func (c *Client) Unfavorite(ctx context.Context, songID string) (bool, error) {
-	err := c.do(ctx, "DELETE", "/v1/me/ratings/songs/"+url.PathEscape(songID), nil, nil, nil)
+	path := "/v1/me/ratings/songs/" + url.PathEscape(songID)
+	var r ratingResponse
+	err := c.do(ctx, "GET", path, nil, nil, &r)
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}
-	return err == nil, err
+	if err != nil {
+		return false, err
+	}
+	if len(r.Data) == 0 || r.Data[0].Attributes.Value != 1 {
+		return false, nil
+	}
+	if err := c.do(ctx, "DELETE", path, nil, nil, nil); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 type libraryRelation struct {

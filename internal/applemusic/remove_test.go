@@ -8,16 +8,38 @@ import (
 )
 
 func TestUnfavorite(t *testing.T) {
-	for status, want := range map[int]bool{http.StatusNoContent: true, http.StatusNotFound: false} {
-		var got string
-		c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-			got = r.Method + " " + r.URL.EscapedPath()
-			w.WriteHeader(status)
+	tests := []struct {
+		name    string
+		rating  string // GET answer; "" means 404
+		want    bool
+		deletes int
+	}{
+		{"favourite", `{"data":[{"id":"1","attributes":{"value":1}}]}`, true, 1},
+		{"not rated", "", false, 0},
+		{"disliked is left alone", `{"data":[{"id":"1","attributes":{"value":-1}}]}`, false, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deletes := 0
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.EscapedPath() != "/v1/me/ratings/songs/1" {
+					t.Errorf("path %s", r.URL.EscapedPath())
+				}
+				switch {
+				case r.Method == http.MethodDelete:
+					deletes++
+					w.WriteHeader(http.StatusNoContent)
+				case tt.rating == "":
+					w.WriteHeader(http.StatusNotFound)
+				default:
+					_, _ = w.Write([]byte(tt.rating))
+				}
+			})
+			got, err := c.Unfavorite(context.Background(), "1")
+			if err != nil || got != tt.want || deletes != tt.deletes {
+				t.Errorf("Unfavorite() = %v, %v with %d deletes; want %v with %d", got, err, deletes, tt.want, tt.deletes)
+			}
 		})
-		removed, err := c.Unfavorite(context.Background(), "1440903439")
-		if err != nil || removed != want || got != "DELETE /v1/me/ratings/songs/1440903439" {
-			t.Errorf("status %d: removed %v, err %v, request %q", status, removed, err, got)
-		}
 	}
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnauthorized) })
 	if _, err := c.Unfavorite(context.Background(), "1"); !errors.Is(err, ErrUnauthorized) {

@@ -66,12 +66,15 @@ func (f *fakeApple) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/v1/me/library":
 		f.library = append(f.library, r.URL.Query().Get("ids[songs]"))
 		w.WriteHeader(http.StatusAccepted)
-	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1/me/ratings/songs/"):
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/me/ratings/songs/"):
 		id := strings.TrimPrefix(r.URL.Path, "/v1/me/ratings/songs/")
 		if !f.isFav[id] {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"` + id + `","attributes":{"value":1}}]}`))
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1/me/ratings/songs/"):
+		id := strings.TrimPrefix(r.URL.Path, "/v1/me/ratings/songs/")
 		delete(f.isFav, id)
 		f.removed = append(f.removed, "fav:"+id)
 		w.WriteHeader(http.StatusNoContent)
