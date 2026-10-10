@@ -167,3 +167,21 @@ func TestBest(t *testing.T) {
 		})
 	}
 }
+
+func TestAcceptable(t *testing.T) {
+	tests := []struct {
+		artist, title string
+		c             Candidate
+		want          bool
+	}{
+		{"Bjork", "Army of Me", Candidate{"Björk", "Army of Me (Live)"}, true},
+		{"Bjork", "Army of Me", Candidate{"Karaoke Stars", "Army of Me"}, false},
+		{"Queen", "Bohemian Rhapsody", Candidate{"Queen", "Bohemian Rhapsody (Made Famous by Queen)"}, false},
+		{"Karaoke Stars", "Army of Me (Karaoke)", Candidate{"Karaoke Stars", "Army of Me (Karaoke)"}, true},
+	}
+	for _, tt := range tests {
+		if got := Acceptable(tt.artist, tt.title, tt.c); got != tt.want {
+			t.Errorf("Acceptable(%q, %q, %+v) = %v, want %v", tt.artist, tt.title, tt.c, got, tt.want)
+		}
+	}
+}

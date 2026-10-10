@@ -94,6 +94,15 @@ func containsWords(haystack, needle string) bool {
 	return strings.Contains(" "+haystack+" ", " "+needle+" ")
 }
 
+// Acceptable reports whether c could stand in for the query: anything but a
+// karaoke/tribute version, unless the query itself asks for one.
+func Acceptable(artist, title string, c Candidate) bool {
+	if isJunk(Normalize(artist)) || isJunk(Normalize(title)) {
+		return true
+	}
+	return !isJunk(Normalize(c.Artist)) && !isJunk(Normalize(c.Title))
+}
+
 func isJunk(s string) bool {
 	for _, p := range junkPatterns {
 		if containsWords(s, p) {

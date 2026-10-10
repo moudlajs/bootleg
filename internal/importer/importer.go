@@ -48,7 +48,12 @@ type Line struct {
 	Query parser.Query
 	Song  applemusic.Song
 	OK    bool
+	// Alternatives are the closest acceptable results when OK is false.
+	Alternatives []applemusic.Song
 }
+
+// maxAlternatives caps the suggestions offered for an unmatched line.
+const maxAlternatives = 3
 
 // Resolve searches sequentially, pausing delay between queries so traffic looks like a person.
 func Resolve(ctx context.Context, api *applemusic.Client, storefront string, delay time.Duration, queries []parser.Query, log *slog.Logger) ([]Line, error) {
@@ -84,7 +89,13 @@ func resolve(ctx context.Context, api *applemusic.Client, storefront string, q p
 	}
 	i, ok := matcher.Best(q.Artist, q.Title, candidates)
 	if !ok {
-		return Line{Query: q}, nil
+		l := Line{Query: q}
+		for j, c := range candidates {
+			if len(l.Alternatives) < maxAlternatives && matcher.Acceptable(q.Artist, q.Title, c) {
+				l.Alternatives = append(l.Alternatives, songs[j])
+			}
+		}
+		return l, nil
 	}
 	return Line{Query: q, Song: songs[i], OK: true}, nil
 }

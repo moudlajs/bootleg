@@ -29,8 +29,9 @@ type fakeApple struct {
 }
 
 var catalog = map[string][2]string{ // search term -> id, "Artist|Title"
-	"Portishead Glory Box": {"p1", "Portishead|Glory Box"},
-	"Björk Army of Me":     {"b1", "Björk|Army of Me"},
+	"Portishead Glory Box": {"1001", "Portishead|Glory Box"},
+	"Björk Army of Me":     {"1002", "Björk|Army of Me"},
+	"Portished Glory Box":  {"1001", "Portishead|Glory Box"}, // typo: artist doesn't match
 }
 
 func (f *fakeApple) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +130,7 @@ func TestPreviewSongs(t *testing.T) {
 	if e := call(t, connect(t, newService(t, f)), "preview_songs", map[string]any{"songs": songs}, &out); e != "" {
 		t.Fatalf("error: %s", e)
 	}
-	if len(out.Matched) != 2 || out.Matched[0].ID != "p1" || out.Matched[1].Title != "Army of Me" {
+	if len(out.Matched) != 2 || out.Matched[0].ID != "1001" || out.Matched[1].Title != "Army of Me" {
 		t.Errorf("matched = %+v", out.Matched)
 	}
 	if len(out.Unmatched) != 1 || out.Unmatched[0].Line != 3 || out.Skipped != 1 {
@@ -155,7 +156,7 @@ func TestAddSongsNewPlaylistAndFavourites(t *testing.T) {
 	if out.Playlist == nil || out.Playlist.ID != "p.new" || !out.Playlist.Created || out.Playlist.Name != "Mix" || out.Playlist.Songs != 2 {
 		t.Errorf("playlist = %+v", out.Playlist)
 	}
-	if len(f.created) != 1 || strings.Join(f.favs, ",") != "p1,b1" {
+	if len(f.created) != 1 || strings.Join(f.favs, ",") != "1001,1002" {
 		t.Errorf("server saw created %v, favs %v", f.created, f.favs)
 	}
 	if !strings.Contains(out.Note, "few minutes") {
@@ -343,5 +344,49 @@ func TestServerInfoInFirstTools(t *testing.T) {
 		if info.Version != "test" || len(info.Tools) != len(toolNames) || !strings.Contains(info.Note, "reconnect") {
 			t.Errorf("%s server = %+v", name, info)
 		}
+	}
+}
+
+func TestPreviewOffersAlternatives(t *testing.T) {
+	var out PreviewOutput
+	if e := call(t, connect(t, newService(t, &fakeApple{})), "preview_songs", map[string]any{"songs": "Portished - Glory Box"}, &out); e != "" {
+		t.Fatalf("error: %s", e)
+	}
+	if len(out.Unmatched) != 1 || len(out.Unmatched[0].Alternatives) != 1 || out.Unmatched[0].Alternatives[0].ID != "1001" {
+		t.Fatalf("unmatched = %+v, want Glory Box (p1) offered", out.Unmatched)
+	}
+}
+
+func TestAddBySongIDs(t *testing.T) {
+	f := &fakeApple{}
+	var out AddOutput
+	e := call(t, connect(t, newService(t, f)), "add_songs", map[string]any{
+		"songs": "Björk - Army of Me", "song_ids": []string{"1001", "1002"}, "to": []string{"lib"},
+	}, &out)
+	if e != "" {
+		t.Fatalf("error: %s", e)
+	}
+	// b1 comes from the line and is not added twice.
+	if out.Matched != 2 || strings.Join(f.library, ";") != "1002,1001" {
+		t.Errorf("out = %+v, library %v", out, f.library)
+	}
+
+	f = &fakeApple{}
+	if e := call(t, connect(t, newService(t, f)), "add_songs", map[string]any{"song_ids": []string{"1001"}, "to": []string{"fav"}}, &out); e != "" {
+		t.Fatalf("ids only: %s", e)
+	}
+	if strings.Join(f.favs, ",") != "1001" {
+		t.Errorf("favs = %v", f.favs)
+	}
+}
+
+func TestAddRejectsBadSongIDs(t *testing.T) {
+	f := &fakeApple{}
+	e := call(t, connect(t, newService(t, f)), "add_songs", map[string]any{"song_ids": []string{"12/../x"}, "to": []string{"lib"}}, &AddOutput{})
+	if !strings.Contains(e, "not a catalog song ID") || len(f.library) != 0 {
+		t.Errorf("error = %q, library %v", e, f.library)
+	}
+	if e := call(t, connect(t, newService(t, f)), "add_songs", map[string]any{"to": []string{"lib"}}, &AddOutput{}); !strings.Contains(e, "no songs given") {
+		t.Errorf("empty: %q", e)
 	}
 }

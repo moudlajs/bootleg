@@ -40,27 +40,28 @@ func run(ctx context.Context, opts options, api *applemusic.Client, stdout io.Wr
 		return err
 	}
 	ids, unmatched := importer.Split(lines)
+	closest := closestByLine(lines)
 
 	if opts.dryRun {
 		if err := printTable(stdout, lines); err != nil {
 			return err
 		}
 		fmt.Fprintln(stdout)
-		printSummary(stdout, len(ids), unmatched, skipped, "")
+		printSummary(stdout, len(ids), unmatched, skipped, "", closest)
 		return partial(unmatched, "")
 	}
 
 	// Write the report before touching Apple, so it exists even if a write fails.
 	reportPath := writeUnmatched(opts.file, unmatched, log)
 	if len(ids) == 0 {
-		printSummary(stdout, 0, unmatched, skipped, reportPath)
+		printSummary(stdout, 0, unmatched, skipped, reportPath, closest)
 		if reportPath == "" {
 			return errNothingMatched
 		}
 		return fmt.Errorf("%w (all lines listed in %s)", errNothingMatched, reportPath)
 	}
 
-	printSummary(stdout, len(ids), unmatched, skipped, reportPath)
+	printSummary(stdout, len(ids), unmatched, skipped, reportPath, closest)
 	w, err := importer.Write(ctx, api, importer.WriteOptions{
 		To:           opts.to,
 		PlaylistName: opts.name,
@@ -114,14 +115,30 @@ func partial(unmatched []parser.Query, reportPath string) error {
 	}
 }
 
-func printSummary(w io.Writer, matched int, unmatched []parser.Query, skipped int, reportPath string) {
+// closestByLine maps an unmatched line's number to its best alternative.
+func closestByLine(lines []importer.Line) map[int]string {
+	m := map[int]string{}
+	for _, l := range lines {
+		if !l.OK && len(l.Alternatives) > 0 {
+			a := l.Alternatives[0]
+			m[l.Query.Line] = a.Artist + " - " + a.Name
+		}
+	}
+	return m
+}
+
+func printSummary(w io.Writer, matched int, unmatched []parser.Query, skipped int, reportPath string, closest map[int]string) {
 	fmt.Fprintf(w, "Matched %d, unmatched %d, skipped %d (blank or comment).\n", matched, len(unmatched), skipped)
 	if len(unmatched) == 0 {
 		return
 	}
 	fmt.Fprintln(w, "Unmatched:")
 	for _, q := range unmatched {
-		fmt.Fprintf(w, "  line %d: %s\n", q.Line, q.Raw)
+		if c, ok := closest[q.Line]; ok {
+			fmt.Fprintf(w, "  line %d: %s (closest: %s)\n", q.Line, q.Raw, c)
+		} else {
+			fmt.Fprintf(w, "  line %d: %s\n", q.Line, q.Raw)
+		}
 	}
 	if reportPath != "" {
 		fmt.Fprintf(w, "Written to %s - fix the lines and feed it back in.\n", reportPath)

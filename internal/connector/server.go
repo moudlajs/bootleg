@@ -55,7 +55,8 @@ func NewServer(svc *Service, version string) *sdk.Server {
 		Name: "add_songs",
 		Description: "Add songs to the user's Apple Music. to: pl (a playlist: give playlist_name to create one, or " +
 			"playlist_id from list_playlists to add to an existing one), lib (the Library), fav (Favourite Songs, " +
-			"which also adds to the Library). Several at once, e.g. [\"pl\",\"fav\"]. Only after the user confirmed a preview.",
+			"which also adds to the Library). Several at once, e.g. [\"pl\",\"fav\"]. Songs as lines and/or " +
+			"song_ids (e.g. an alternative the user picked). Only after the user confirmed a preview.",
 		Annotations: &sdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: ptr(false), IdempotentHint: false, OpenWorldHint: ptr(true)},
 	}, handler(svc.Log, "add_songs", svc.add))
 
@@ -79,7 +80,8 @@ type SongsInput struct {
 
 // AddInput is add_songs' arguments.
 type AddInput struct {
-	Songs        string   `json:"songs" jsonschema:"the same lines as for preview_songs; at most 50"`
+	Songs        string   `json:"songs,omitempty" jsonschema:"the same lines as for preview_songs; at most 50 songs in total with song_ids"`
+	SongIDs      []string `json:"song_ids,omitempty" jsonschema:"catalog IDs to add as they are, e.g. an alternative the user picked from preview_songs"`
 	To           []string `json:"to" jsonschema:"one or more of: pl (playlist), lib (Library), fav (Favourite Songs)"`
 	PlaylistName string   `json:"playlist_name,omitempty" jsonschema:"with pl: create a new playlist with this name"`
 	PlaylistID   string   `json:"playlist_id,omitempty" jsonschema:"with pl: add to this existing playlist (ID from list_playlists) instead"`
@@ -96,8 +98,9 @@ type Match struct {
 
 // Unmatched is a line with no acceptable catalog result.
 type Unmatched struct {
-	Line  int    `json:"line"`
-	Query string `json:"query"`
+	Line         int     `json:"line"`
+	Query        string  `json:"query"`
+	Alternatives []Match `json:"alternatives,omitempty" jsonschema:"closest catalog results; offer them as 'did you mean' and add a chosen one by song_ids"`
 }
 
 // PreviewOutput is preview_songs' result.
@@ -172,7 +175,11 @@ func (s *Service) preview(ctx context.Context, in SongsInput) (PreviewOutput, er
 		if l.OK {
 			out.Matched = append(out.Matched, Match{Line: l.Query.Line, Query: l.Query.Raw, Artist: l.Song.Artist, Title: l.Song.Name, ID: l.Song.ID})
 		} else {
-			out.Unmatched = append(out.Unmatched, Unmatched{Line: l.Query.Line, Query: l.Query.Raw})
+			u := Unmatched{Line: l.Query.Line, Query: l.Query.Raw}
+			for _, a := range l.Alternatives {
+				u.Alternatives = append(u.Alternatives, Match{Line: l.Query.Line, Query: l.Query.Raw, Artist: a.Artist, Title: a.Name, ID: a.ID})
+			}
+			out.Unmatched = append(out.Unmatched, u)
 		}
 	}
 	return out, nil
@@ -190,11 +197,24 @@ func (s *Service) add(ctx context.Context, in AddInput) (AddOutput, error) {
 		}
 	}
 
-	lines, _, err := s.resolve(ctx, in.Songs)
+	byID, err := songIDs(in.SongIDs)
 	if err != nil {
 		return AddOutput{}, err
 	}
+	var lines []importer.Line
+	switch {
+	case strings.TrimSpace(in.Songs) != "":
+		if lines, _, err = s.resolve(ctx, in.Songs); err != nil {
+			return AddOutput{}, err
+		}
+	case len(byID) == 0:
+		return AddOutput{}, errors.New("no songs given: send songs (Artist - Title lines) and/or song_ids")
+	}
 	ids, unmatched := importer.Split(lines)
+	ids = appendNew(ids, byID)
+	if len(ids) > maxSongs {
+		return AddOutput{}, fmt.Errorf("%d songs is more than %d per call; split the list and send it in parts", len(ids), maxSongs)
+	}
 	out := AddOutput{Matched: len(ids), Unmatched: []Unmatched{}}
 	for _, q := range unmatched {
 		out.Unmatched = append(out.Unmatched, Unmatched{Line: q.Line, Query: q.Raw})
@@ -238,6 +258,34 @@ func (s *Service) playlists(ctx context.Context, _ struct{}) (PlaylistsOutput, e
 		out.Playlists = append(out.Playlists, PlaylistInfo{ID: p.ID, Name: p.Name, CanAdd: p.CanEdit, Modified: p.Modified})
 	}
 	return out, nil
+}
+
+// songIDs checks catalog IDs: digits only, so they're safe in paths and queries.
+func songIDs(in []string) ([]string, error) {
+	var out []string
+	for _, id := range in {
+		id = strings.TrimSpace(id)
+		if id == "" || strings.Trim(id, "0123456789") != "" {
+			return nil, fmt.Errorf("%q is not a catalog song ID (digits only, as preview_songs returns them)", id)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// appendNew appends the IDs not already in ids, keeping order.
+func appendNew(ids, more []string) []string {
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		seen[id] = true
+	}
+	for _, id := range more {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 func (s *Service) resolve(ctx context.Context, songs string) ([]importer.Line, int, error) {
