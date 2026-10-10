@@ -72,6 +72,13 @@ func NewServer(svc *Service, version string) *sdk.Server {
 	}, handler(svc.Log, "remove_songs", svc.remove))
 
 	sdk.AddTool(s, &sdk.Tool{
+		Name: "album_tracks",
+		Description: "Find an album (Artist - Album, or album_id) and list its tracks in order with catalog IDs, plus " +
+			"other editions. Use it for 'add this album'; then add the tracks with add_songs song_ids.",
+		Annotations: &sdk.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(true)},
+	}, handler(svc.Log, "album_tracks", svc.album))
+
+	sdk.AddTool(s, &sdk.Tool{
 		Name:        "list_playlists",
 		Description: "The playlists in the user's Apple Music library, with their IDs, so songs can be added to an existing one.",
 		Annotations: &sdk.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(true)},
@@ -160,7 +167,7 @@ type ServerInfo struct {
 }
 
 // toolNames are every tool NewServer registers; a test keeps it in step.
-var toolNames = []string{"preview_songs", "add_songs", "remove_songs", "list_playlists"}
+var toolNames = []string{"preview_songs", "add_songs", "remove_songs", "album_tracks", "list_playlists"}
 
 const reconnectNote = "If any of these tools are missing from your tool list, bootleg was updated after this " +
 	"connector's tools were loaded: tell the user to reconnect the bootleg connector (claude.ai Settings > " +

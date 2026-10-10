@@ -48,6 +48,16 @@ func (f *fakeApple) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case strings.HasSuffix(r.URL.Path, "/search") && r.URL.Query().Get("types") == "albums":
+		_, _ = w.Write([]byte(`{"results":{"albums":{"data":[
+			{"id":"2002","attributes":{"name":"Takk... (Deluxe Edition)","artistName":"Sigur Rós","trackCount":16}},
+			{"id":"2001","attributes":{"name":"Takk...","artistName":"Sigur Rós","trackCount":2,"releaseDate":"2005-09-12"}}]}}}`))
+	case r.URL.Path == "/v1/catalog/cz/albums/2001/tracks":
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"3001","type":"songs","attributes":{"name":"Glósóli","artistName":"Sigur Rós","albumName":"Takk..."}},
+			{"id":"3002","type":"songs","attributes":{"name":"Hoppípolla","artistName":"Sigur Rós","albumName":"Takk..."}}]}`))
+	case strings.HasPrefix(r.URL.Path, "/v1/catalog/cz/albums/"):
+		w.WriteHeader(http.StatusNotFound)
 	case strings.HasSuffix(r.URL.Path, "/search"):
 		f.searches++
 		data := []any{}
@@ -511,5 +521,49 @@ func TestRemoveSongsValidation(t *testing.T) {
 				t.Errorf("removed %v despite invalid arguments", f.removed)
 			}
 		})
+	}
+}
+
+func TestAlbumTracks(t *testing.T) {
+	var out AlbumOutput
+	if e := call(t, connect(t, newService(t, &fakeApple{})), "album_tracks", map[string]any{"album": "Sigur Ros - Takk"}, &out); e != "" {
+		t.Fatalf("error: %s", e)
+	}
+	// The plain edition wins over the deluxe one listed first, which goes to other_editions.
+	if out.Album == nil || out.Album.ID != "2001" || out.Album.Tracks != 2 {
+		t.Fatalf("album = %+v", out.Album)
+	}
+	if len(out.Tracks) != 2 || out.Tracks[0].ID != "3001" || out.Tracks[1].Line != 2 {
+		t.Errorf("tracks = %+v", out.Tracks)
+	}
+	if len(out.OtherEditions) != 1 || out.OtherEditions[0].ID != "2002" || !strings.Contains(out.Note, "song_ids") {
+		t.Errorf("other editions %+v, note %q", out.OtherEditions, out.Note)
+	}
+}
+
+func TestAlbumTracksByIDAndErrors(t *testing.T) {
+	cs := connect(t, newService(t, &fakeApple{}))
+	var out AlbumOutput
+	if e := call(t, cs, "album_tracks", map[string]any{"album_id": "2001"}, &out); e != "" || len(out.Tracks) != 2 || out.Album.Name != "Takk..." {
+		t.Errorf("by id: error %q, out %+v", e, out)
+	}
+	tests := []struct {
+		args map[string]any
+		want string
+	}{
+		{map[string]any{}, "say which album"},
+		{map[string]any{"album": "x", "album_id": "2001"}, "not both"},
+		{map[string]any{"album_id": "../1"}, "catalog album ID"},
+		{map[string]any{"album_id": "9999"}, "isn't in the catalog"},
+	}
+	for _, tt := range tests {
+		if e := call(t, cs, "album_tracks", tt.args, &AlbumOutput{}); !strings.Contains(e, tt.want) {
+			t.Errorf("%v: error %q, want %q", tt.args, e, tt.want)
+		}
+	}
+	// No match is not an error: the editions are offered instead.
+	out = AlbumOutput{}
+	if e := call(t, cs, "album_tracks", map[string]any{"album": "Björk - Post"}, &out); e != "" || out.Album != nil || len(out.OtherEditions) != 2 {
+		t.Errorf("no match: error %q, out %+v", e, out)
 	}
 }

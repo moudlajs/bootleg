@@ -43,10 +43,10 @@ cmd/bootleg/main.go   flags, signal.NotifyContext, build deps, call run(), map e
 internal/config         env vars + tiny .env loader (only fills unset vars)
 internal/parser         input file → []Query{Artist, Title, Raw}
 internal/matcher        PURE: normalise, reject karaoke/tribute, score, pick best
-internal/applemusic     HTTP client: Search, CreatePlaylist, AddTracks, AddToLibrary, Favorite
+internal/applemusic     HTTP client: search (songs, albums), playlists, library, favourites, and their removal
 internal/importer       the engine: Resolve (search + match), Write (playlist/library/favourites); no printing, no files
 internal/auth           owner-only OAuth 2.1 sign-in for the hosted connector (passphrase; Claude's client IDs only)
-internal/connector      MCP tools (preview_songs, add_songs, list_playlists) + HTTP transport; words results for people
+internal/connector      MCP tools (preview_songs, add_songs, remove_songs, album_tracks, list_playlists) + HTTP transport
 cmd/bootleg-mcp/main.go the connector: stdio locally, HTTP /mcp + /health when PORT is set, sign-in required
 ```
 
@@ -89,7 +89,12 @@ cmd/bootleg-mcp/main.go the connector: stdio locally, HTTP /mcp + /health when P
   automatic "Favourite Songs" playlist and joins the Library, even if it
   wasn't there. Undo: `DELETE` the same path → 204. (`/v1/me/favorites`
   exists but isn't what the app's star uses; don't switch to it.)
-- All of the above verified against the real API on 2026-10-07 (UTC).
+- Albums: `GET …/search?types=albums`, `GET /v1/catalog/{sf}/albums/{id}/tracks`.
+- Removal: library copy via `GET /v1/catalog/{sf}/songs/{id}?relate=library`;
+  playlist tracks carry `playParams.catalogId`, removed with
+  `DELETE …/playlists/{id}/tracks?ids[library-songs]={trackId}&mode=all` → 204.
+- The developer token is a JWT; its `exp` drives the expiry warnings.
+- All of the above verified against the real API (2026-10-07 and 2026-10-10).
 - 401/403 means the web-player tokens expired (exit 2).
 
 ## Exit codes
