@@ -385,15 +385,32 @@ func TestAddBySongIDs(t *testing.T) {
 }
 
 func TestAddCapsCombinedSongs(t *testing.T) {
-	ids := make([]string, maxSongs)
-	for i := range ids {
-		ids[i] = fmt.Sprint(5000 + i)
+	ids := func(n int) []string {
+		out := make([]string, n)
+		for i := range out {
+			out[i] = fmt.Sprint(5000 + i)
+		}
+		return out
 	}
-	f := &fakeApple{}
-	// 50 IDs plus one matched line is 51 songs.
-	e := call(t, connect(t, newService(t, f)), "add_songs", map[string]any{"songs": "Björk - Army of Me", "song_ids": ids, "to": []string{"lib"}}, &AddOutput{})
-	if !strings.Contains(e, "more than 50") || len(f.library) != 0 || f.searches != 0 {
-		t.Errorf("error %q, library %v, searches %d (want none)", e, f.library, f.searches)
+	tests := []struct {
+		name         string
+		songs        string
+		n            int
+		wantErr      string
+		wantSearches int
+	}{
+		{"51 IDs: refused before searching", "", 51, "more than 50", 0},
+		{"50 IDs + a line: refused after it", "Björk - Army of Me", 50, "more than 50", 1},
+		{"50 IDs + comments only: fits", "# nothing but a comment", 50, "", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeApple{}
+			e := call(t, connect(t, newService(t, f)), "add_songs", map[string]any{"songs": tt.songs, "song_ids": ids(tt.n), "to": []string{"lib"}}, &AddOutput{})
+			if (tt.wantErr == "" && e != "") || !strings.Contains(e, tt.wantErr) || f.searches != tt.wantSearches {
+				t.Errorf("error %q (want %q), searches %d (want %d)", e, tt.wantErr, f.searches, tt.wantSearches)
+			}
+		})
 	}
 }
 

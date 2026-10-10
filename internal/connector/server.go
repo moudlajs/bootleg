@@ -216,13 +216,14 @@ func (s *Service) add(ctx context.Context, in AddInput) (AddOutput, error) {
 		return AddOutput{}, err
 	}
 	// Fail before spending paced searches on a call that can't fit.
-	if len(byID) > maxSongs || (len(byID) == maxSongs && strings.TrimSpace(in.Songs) != "") {
+	if len(byID) > maxSongs {
 		return AddOutput{}, fmt.Errorf("more than %d songs per call; split the list and send it in parts", maxSongs)
 	}
 	var lines []importer.Line
 	switch {
 	case strings.TrimSpace(in.Songs) != "":
-		if lines, _, err = s.resolve(ctx, in.Songs); err != nil {
+		// Lines that are only comments are fine when IDs are given.
+		if lines, _, err = s.resolve(ctx, in.Songs); err != nil && (!errors.Is(err, errNoSongs) || len(byID) == 0) {
 			return AddOutput{}, err
 		}
 	case len(byID) == 0:
@@ -278,6 +279,8 @@ func (s *Service) playlists(ctx context.Context, _ struct{}) (PlaylistsOutput, e
 	return out, nil
 }
 
+var errNoSongs = errors.New("no songs given: send one song per line as Artist - Title")
+
 // songIDs checks catalog IDs: digits only, so they're safe in paths and queries.
 func songIDs(in []string) ([]string, error) {
 	var out []string
@@ -313,7 +316,7 @@ func (s *Service) resolve(ctx context.Context, songs string) ([]importer.Line, i
 	}
 	switch {
 	case len(queries) == 0:
-		return nil, 0, errors.New("no songs given: send one song per line as Artist - Title")
+		return nil, 0, errNoSongs
 	case len(queries) > maxSongs:
 		return nil, 0, fmt.Errorf("%d songs is more than %d per call; split the list and send it in parts", len(queries), maxSongs)
 	}

@@ -96,6 +96,7 @@ func containsWords(haystack, needle string) bool {
 // Related reports whether c is worth suggesting for a query Best found no
 // match for: it shares the artist or the title (word-bounded, either way
 // round) and isn't a karaoke/tribute version the query didn't ask for.
+// A shared title alone is enough on purpose; the user confirms suggestions.
 func Related(artist, title string, c Candidate) bool {
 	qArtist, qTitle := Normalize(artist), Normalize(title)
 	cArtist, cTitle := Normalize(c.Artist), Normalize(c.Title)

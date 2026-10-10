@@ -177,6 +177,7 @@ func TestRelated(t *testing.T) {
 		{"Radiohead", "Kreep", Candidate{"Radiohead", "Creep"}, true},          // artist shared
 		{"Portished", "Glory Box", Candidate{"Portishead", "Glory Box"}, true}, // title shared
 		{"Radiohead", "Kreep", Candidate{"Coldplay", "Yellow"}, false},         // unrelated
+		{"Foo", "Yesterday", Candidate{"The Beatles", "Yesterday"}, true},      // same title only: offered, user confirms
 		{"Bjork", "Army of Me", Candidate{"Karaoke Stars", "Army of Me"}, false},
 		{"Karaoke Stars", "Army of Me (Karaoke)", Candidate{"Karaoke Stars", "Army of Me (Karaoke)"}, true},
 		{"", "teardrop masive atack", Candidate{"Massive Attack", "Teardrop"}, true}, // whole term
