@@ -48,7 +48,7 @@ type Line struct {
 	Query parser.Query
 	Song  applemusic.Song
 	OK    bool
-	// Alternatives are the closest acceptable results when OK is false.
+	// Alternatives are related results (same artist or title) when OK is false.
 	Alternatives []applemusic.Song
 }
 
@@ -91,7 +91,7 @@ func resolve(ctx context.Context, api *applemusic.Client, storefront string, q p
 	if !ok {
 		l := Line{Query: q}
 		for j, c := range candidates {
-			if len(l.Alternatives) < maxAlternatives && matcher.Acceptable(q.Artist, q.Title, c) {
+			if len(l.Alternatives) < maxAlternatives && matcher.Related(q.Artist, q.Title, c) {
 				l.Alternatives = append(l.Alternatives, songs[j])
 			}
 		}

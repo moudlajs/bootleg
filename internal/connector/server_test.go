@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -378,6 +379,19 @@ func TestAddBySongIDs(t *testing.T) {
 	}
 	if strings.Join(f.favs, ",") != "1001" {
 		t.Errorf("favs = %v", f.favs)
+	}
+}
+
+func TestAddCapsCombinedSongs(t *testing.T) {
+	ids := make([]string, maxSongs)
+	for i := range ids {
+		ids[i] = fmt.Sprint(5000 + i)
+	}
+	f := &fakeApple{}
+	// 50 IDs plus one matched line is 51 songs.
+	e := call(t, connect(t, newService(t, f)), "add_songs", map[string]any{"songs": "Björk - Army of Me", "song_ids": ids, "to": []string{"lib"}}, &AddOutput{})
+	if !strings.Contains(e, "more than 50") || len(f.library) != 0 {
+		t.Errorf("error %q, library %v", e, f.library)
 	}
 }
 

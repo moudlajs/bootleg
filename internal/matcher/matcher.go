@@ -30,12 +30,11 @@ const (
 // Best returns the index of the best candidate, or false; an empty artist makes title a free-form term.
 func Best(artist, title string, candidates []Candidate) (int, bool) {
 	qArtist, qTitle := Normalize(artist), Normalize(title)
-	queryIsJunk := isJunk(qArtist) || isJunk(qTitle)
 
 	best, bestScore := -1, 0
 	for i, c := range candidates {
 		cArtist, cTitle := Normalize(c.Artist), Normalize(c.Title)
-		if !queryIsJunk && (isJunk(cArtist) || isJunk(cTitle)) {
+		if !junkAllowed(qArtist, qTitle, cArtist, cTitle) {
 			continue
 		}
 
@@ -94,13 +93,28 @@ func containsWords(haystack, needle string) bool {
 	return strings.Contains(" "+haystack+" ", " "+needle+" ")
 }
 
-// Acceptable reports whether c could stand in for the query: anything but a
-// karaoke/tribute version, unless the query itself asks for one.
-func Acceptable(artist, title string, c Candidate) bool {
-	if isJunk(Normalize(artist)) || isJunk(Normalize(title)) {
-		return true
+// Related reports whether c is worth suggesting for a query Best found no
+// match for: it shares the artist or the title (word-bounded, either way
+// round) and isn't a karaoke/tribute version the query didn't ask for.
+func Related(artist, title string, c Candidate) bool {
+	qArtist, qTitle := Normalize(artist), Normalize(title)
+	cArtist, cTitle := Normalize(c.Artist), Normalize(c.Title)
+	if !junkAllowed(qArtist, qTitle, cArtist, cTitle) {
+		return false
 	}
-	return !isJunk(Normalize(c.Artist)) && !isJunk(Normalize(c.Title))
+	if qArtist == "" {
+		return containsWords(qTitle, cTitle) || containsWords(qTitle, cArtist)
+	}
+	return overlaps(qArtist, cArtist) || overlaps(qTitle, cTitle)
+}
+
+func overlaps(a, b string) bool {
+	return a != "" && b != "" && (a == b || containsWords(a, b) || containsWords(b, a))
+}
+
+// junkAllowed rejects karaoke/tribute candidates unless the query asks for one.
+func junkAllowed(qArtist, qTitle, cArtist, cTitle string) bool {
+	return isJunk(qArtist) || isJunk(qTitle) || (!isJunk(cArtist) && !isJunk(cTitle))
 }
 
 func isJunk(s string) bool {
