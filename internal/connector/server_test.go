@@ -26,6 +26,9 @@ type fakeApple struct {
 	status   int
 	failFav  bool
 	searches int
+	isFav    map[string]bool // favourited catalog IDs, for remove_songs
+	inLib    map[string]bool // catalog IDs with a library copy
+	removed  []string        // what remove_songs deleted, in order
 	created  []string
 	library  []string
 	favs     []string
@@ -63,6 +66,34 @@ func (f *fakeApple) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/v1/me/library":
 		f.library = append(f.library, r.URL.Query().Get("ids[songs]"))
 		w.WriteHeader(http.StatusAccepted)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/me/ratings/songs/"):
+		id := strings.TrimPrefix(r.URL.Path, "/v1/me/ratings/songs/")
+		if !f.isFav[id] {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"` + id + `","attributes":{"value":1}}]}`))
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1/me/ratings/songs/"):
+		id := strings.TrimPrefix(r.URL.Path, "/v1/me/ratings/songs/")
+		delete(f.isFav, id)
+		f.removed = append(f.removed, "fav:"+id)
+		w.WriteHeader(http.StatusNoContent)
+	case strings.HasPrefix(r.URL.Path, "/v1/catalog/cz/songs/") && r.URL.Query().Get("relate") == "library":
+		id := strings.TrimPrefix(r.URL.Path, "/v1/catalog/cz/songs/")
+		lib := []any{}
+		if f.inLib[id] {
+			lib = append(lib, map[string]string{"id": "i." + id})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"id": id,
+			"relationships": map[string]any{"library": map[string]any{"data": lib}}}}})
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1/me/library/songs/"):
+		f.removed = append(f.removed, "lib:"+strings.TrimPrefix(r.URL.Path, "/v1/me/library/songs/"))
+		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/me/library/playlists/p.road/tracks":
+		_, _ = w.Write([]byte(`{"data":[{"id":"i.t1","attributes":{"name":"Glory Box","playParams":{"catalogId":"1001"}}}]}`))
+	case r.Method == http.MethodDelete && r.URL.Path == "/v1/me/library/playlists/p.road/tracks":
+		f.removed = append(f.removed, "pl:"+r.URL.Query().Get("ids[library-songs]")+":"+r.URL.Query().Get("mode"))
+		w.WriteHeader(http.StatusNoContent)
 	case strings.HasPrefix(r.URL.Path, "/v1/me/ratings/songs/"):
 		if f.failFav {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -435,5 +466,50 @@ func TestServerInfoTokenExpiry(t *testing.T) {
 	}
 	if info := serverInfo("v", now.AddDate(0, 0, 3), now); !strings.Contains(info.Note, "expires on 2026-10-13") || !strings.Contains(info.Note, "deploy/tokens.sh") {
 		t.Errorf("near expiry: %+v", info)
+	}
+}
+
+func TestRemoveSongs(t *testing.T) {
+	f := &fakeApple{isFav: map[string]bool{"1001": true}, inLib: map[string]bool{"1001": true}}
+	var out RemoveOutput
+	e := call(t, connect(t, newService(t, f)), "remove_songs", map[string]any{
+		"songs": "Portishead - Glory Box\nNobody - Nothing", "song_ids": []string{"1002"},
+		"from": []string{"lib", "fav", "pl"}, "playlist_id": "p.road",
+	}, &out)
+	if e != "" {
+		t.Fatalf("error: %s", e)
+	}
+	// Order: favourite, playlist, library. 1002 is nowhere, so it's reported, not an error.
+	if strings.Join(f.removed, ",") != "fav:1001,pl:i.t1:all,lib:i.1001" {
+		t.Errorf("removed %v", f.removed)
+	}
+	if out.Unfavourited != 1 || out.RemovedFromPlaylist != 1 || out.RemovedFromLibrary != 1 || len(out.NotThere) != 3 || len(out.Unmatched) != 1 {
+		t.Errorf("out = %+v", out)
+	}
+}
+
+func TestRemoveSongsValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{"no from", map[string]any{"song_ids": []string{"1001"}, "from": []string{}}, "where to remove from"},
+		{"pl without id", map[string]any{"song_ids": []string{"1001"}, "from": []string{"pl"}}, "needs playlist_id"},
+		{"id without pl", map[string]any{"song_ids": []string{"1001"}, "from": []string{"fav"}, "playlist_id": "p.road"}, "only applies with pl"},
+		{"bad id", map[string]any{"song_ids": []string{"x/../1"}, "from": []string{"fav"}}, "not a catalog song ID"},
+		{"nothing", map[string]any{"from": []string{"fav"}}, "no songs given"},
+		{"only unmatched", map[string]any{"songs": "Nobody - Nothing", "from": []string{"fav"}}, "nothing was removed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeApple{isFav: map[string]bool{"1001": true}}
+			if e := call(t, connect(t, newService(t, f)), "remove_songs", tt.args, &RemoveOutput{}); !strings.Contains(e, tt.want) {
+				t.Errorf("error = %q, want %q", e, tt.want)
+			}
+			if len(f.removed) != 0 {
+				t.Errorf("removed %v despite invalid arguments", f.removed)
+			}
+		})
 	}
 }

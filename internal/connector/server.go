@@ -64,6 +64,14 @@ func NewServer(svc *Service, version string) *sdk.Server {
 	}, handler(svc.Log, "add_songs", svc.add))
 
 	sdk.AddTool(s, &sdk.Tool{
+		Name: "remove_songs",
+		Description: "Undo: remove songs from a playlist (pl, with playlist_id), the Library (lib) and/or Favourite " +
+			"Songs (fav). Songs as lines and/or song_ids. This deletes things: say exactly what will be removed and " +
+			"from where, and only call it after the user confirms. Songs that weren't there are reported, not errors.",
+		Annotations: &sdk.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: ptr(true), IdempotentHint: true, OpenWorldHint: ptr(true)},
+	}, handler(svc.Log, "remove_songs", svc.remove))
+
+	sdk.AddTool(s, &sdk.Tool{
 		Name:        "list_playlists",
 		Description: "The playlists in the user's Apple Music library, with their IDs, so songs can be added to an existing one.",
 		Annotations: &sdk.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(true)},
@@ -152,7 +160,7 @@ type ServerInfo struct {
 }
 
 // toolNames are every tool NewServer registers; a test keeps it in step.
-var toolNames = []string{"preview_songs", "add_songs", "list_playlists"}
+var toolNames = []string{"preview_songs", "add_songs", "remove_songs", "list_playlists"}
 
 const reconnectNote = "If any of these tools are missing from your tool list, bootleg was updated after this " +
 	"connector's tools were loaded: tell the user to reconnect the bootleg connector (claude.ai Settings > " +
