@@ -30,12 +30,11 @@ const (
 // Best returns the index of the best candidate, or false; an empty artist makes title a free-form term.
 func Best(artist, title string, candidates []Candidate) (int, bool) {
 	qArtist, qTitle := Normalize(artist), Normalize(title)
-	queryIsJunk := isJunk(qArtist) || isJunk(qTitle)
 
 	best, bestScore := -1, 0
 	for i, c := range candidates {
 		cArtist, cTitle := Normalize(c.Artist), Normalize(c.Title)
-		if !queryIsJunk && (isJunk(cArtist) || isJunk(cTitle)) {
+		if !junkAllowed(qArtist, qTitle, cArtist, cTitle) {
 			continue
 		}
 
@@ -92,6 +91,31 @@ func containsWords(haystack, needle string) bool {
 		return false
 	}
 	return strings.Contains(" "+haystack+" ", " "+needle+" ")
+}
+
+// Related reports whether c is worth suggesting for a query Best found no
+// match for: it shares the artist or the title (word-bounded, either way
+// round) and isn't a karaoke/tribute version the query didn't ask for.
+// A shared title alone is enough on purpose; the user confirms suggestions.
+func Related(artist, title string, c Candidate) bool {
+	qArtist, qTitle := Normalize(artist), Normalize(title)
+	cArtist, cTitle := Normalize(c.Artist), Normalize(c.Title)
+	if !junkAllowed(qArtist, qTitle, cArtist, cTitle) {
+		return false
+	}
+	if qArtist == "" {
+		return containsWords(qTitle, cTitle) || containsWords(qTitle, cArtist)
+	}
+	return overlaps(qArtist, cArtist) || overlaps(qTitle, cTitle)
+}
+
+func overlaps(a, b string) bool {
+	return a != "" && b != "" && (a == b || containsWords(a, b) || containsWords(b, a))
+}
+
+// junkAllowed rejects karaoke/tribute candidates unless the query asks for one.
+func junkAllowed(qArtist, qTitle, cArtist, cTitle string) bool {
+	return isJunk(qArtist) || isJunk(qTitle) || (!isJunk(cArtist) && !isJunk(cTitle))
 }
 
 func isJunk(s string) bool {

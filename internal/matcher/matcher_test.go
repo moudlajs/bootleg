@@ -167,3 +167,25 @@ func TestBest(t *testing.T) {
 		})
 	}
 }
+
+func TestRelated(t *testing.T) {
+	tests := []struct {
+		artist, title string
+		c             Candidate
+		want          bool
+	}{
+		{"Radiohead", "Kreep", Candidate{"Radiohead", "Creep"}, true},          // artist shared
+		{"Portished", "Glory Box", Candidate{"Portishead", "Glory Box"}, true}, // title shared
+		{"Radiohead", "Kreep", Candidate{"Coldplay", "Yellow"}, false},         // unrelated
+		{"Foo", "Yesterday", Candidate{"The Beatles", "Yesterday"}, true},      // same title only: offered, user confirms
+		{"Bjork", "Army of Me", Candidate{"Karaoke Stars", "Army of Me"}, false},
+		{"Karaoke Stars", "Army of Me (Karaoke)", Candidate{"Karaoke Stars", "Army of Me (Karaoke)"}, true},
+		{"", "teardrop masive atack", Candidate{"Massive Attack", "Teardrop"}, true}, // whole term
+		{"", "teardrop masive atack", Candidate{"Coldplay", "Yellow"}, false},
+	}
+	for _, tt := range tests {
+		if got := Related(tt.artist, tt.title, tt.c); got != tt.want {
+			t.Errorf("Related(%q, %q, %+v) = %v, want %v", tt.artist, tt.title, tt.c, got, tt.want)
+		}
+	}
+}

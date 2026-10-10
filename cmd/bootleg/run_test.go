@@ -24,6 +24,7 @@ import (
 	"github.com/moudlajs/bootleg/internal/applemusic"
 	"github.com/moudlajs/bootleg/internal/config"
 	"github.com/moudlajs/bootleg/internal/importer"
+	"github.com/moudlajs/bootleg/internal/parser"
 )
 
 // fakeAPI answers search by term and records every write.
@@ -856,5 +857,24 @@ func TestWarnExpiry(t *testing.T) {
 				t.Errorf("warnExpiry() = %q, want %q", out.String(), tt.want)
 			}
 		})
+	}
+}
+
+func TestSummaryShowsClosest(t *testing.T) {
+	lines := []importer.Line{
+		{Query: parser.Query{Raw: "Radiohead - Kreep", Line: 2}, Alternatives: []applemusic.Song{{Artist: "Radiohead", Name: "Creep"}, {Artist: "Radiohead", Name: "Creep (Live)"}}},
+		{Query: parser.Query{Raw: "Zzqx - Nothing", Line: 3}},
+		{Query: parser.Query{Raw: "Björk - Army of Me", Line: 1}, OK: true},
+	}
+	closest := closestByLine(lines)
+	if len(closest) != 1 || closest[2] != "Radiohead - Creep" {
+		t.Fatalf("closestByLine() = %v", closest)
+	}
+	var out bytes.Buffer
+	printSummary(&out, 1, []parser.Query{lines[0].Query, lines[1].Query}, 0, "", closest)
+	for _, want := range []string{"line 2: Radiohead - Kreep (closest: Radiohead - Creep)\n", "line 3: Zzqx - Nothing\n"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("summary missing %q:\n%s", want, out.String())
+		}
 	}
 }

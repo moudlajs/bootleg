@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -191,5 +192,25 @@ func TestSleep(t *testing.T) {
 	}
 	if time.Since(start) > time.Second {
 		t.Error("sleep ignored the cancelled context")
+	}
+}
+
+func TestResolveCapsAlternatives(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		data := []any{}
+		for i := range 5 {
+			data = append(data, map[string]any{"id": fmt.Sprint(i), "attributes": map[string]string{"name": "Creep (Take " + fmt.Sprint(i) + ")", "artistName": "Radiohead"}})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": map[string]any{"songs": map[string]any{"data": data}}})
+	}))
+	t.Cleanup(srv.Close)
+	api := applemusic.New(srv.Client(), srv.URL, "fake-dev", "fake-user")
+
+	lines, err := Resolve(context.Background(), api, "cz", 0, []parser.Query{{Artist: "Radiohead", Title: "Kreep", Line: 1}}, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines[0].OK || len(lines[0].Alternatives) != maxAlternatives || lines[0].Alternatives[0].ID != "0" {
+		t.Errorf("line = %+v, want %d alternatives in Apple's order", lines[0], maxAlternatives)
 	}
 }
