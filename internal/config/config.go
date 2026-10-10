@@ -4,12 +4,15 @@ package config
 
 import (
 	"bufio"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -55,6 +58,29 @@ func FromEnv() (Config, error) {
 		c.Storefront = DefaultStorefront
 	}
 	return c, nil
+}
+
+// ExpiryWarning is how far ahead DevTokenExpires is worth mentioning.
+const ExpiryWarning = 14 * 24 * time.Hour
+
+// DevTokenExpires reads the developer token's expiry from its JWT payload.
+// Only the date is read; the token's signature is Apple's business.
+func (c Config) DevTokenExpires() (time.Time, bool) {
+	parts := strings.Split(c.DevToken, ".")
+	if len(parts) != 3 {
+		return time.Time{}, false
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return time.Time{}, false
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if json.Unmarshal(raw, &claims) != nil || claims.Exp == 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(claims.Exp, 0).UTC(), true
 }
 
 // stripBearer is safe because the dev token is a JWT, which always starts with "eyJ".

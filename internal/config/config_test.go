@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // unsetEnv unsets key for this test; t.Setenv's cleanup restores it afterwards.
@@ -234,5 +236,32 @@ func TestFromEnvBearerOnlyIsMissing(t *testing.T) {
 	t.Setenv(EnvUserToken, "user")
 	if _, err := FromEnv(); !errors.Is(err, ErrMissingToken) {
 		t.Fatalf("FromEnv() error = %v, want ErrMissingToken", err)
+	}
+}
+
+func TestDevTokenExpires(t *testing.T) {
+	jwt := func(payload string) string {
+		return "eyJhbGciOiJFUzI1NiJ9." + base64.RawURLEncoding.EncodeToString([]byte(payload)) + ".sig"
+	}
+	tests := []struct {
+		name  string
+		token string
+		want  time.Time
+		ok    bool
+	}{
+		{"exp", jwt(`{"iss":"x","exp":1796860800}`), time.Unix(1796860800, 0).UTC(), true},
+		{"padded payload", strings.Replace(jwt(`{"exp":1796860800}`), ".sig", "", 1) + "==.sig", time.Unix(1796860800, 0).UTC(), true},
+		{"no exp", jwt(`{"iss":"x"}`), time.Time{}, false},
+		{"not a JWT", "abc", time.Time{}, false},
+		{"bad base64", "a.!!!.c", time.Time{}, false},
+		{"bad JSON", jwt(`{`), time.Time{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := Config{DevToken: tt.token}.DevTokenExpires()
+			if ok != tt.ok || !got.Equal(tt.want) {
+				t.Errorf("DevTokenExpires() = %v, %v; want %v, %v", got, ok, tt.want, tt.ok)
+			}
+		})
 	}
 }

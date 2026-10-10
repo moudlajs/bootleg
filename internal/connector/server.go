@@ -12,6 +12,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/moudlajs/bootleg/internal/applemusic"
+	"github.com/moudlajs/bootleg/internal/config"
 	"github.com/moudlajs/bootleg/internal/importer"
 	"github.com/moudlajs/bootleg/internal/parser"
 )
@@ -29,6 +30,8 @@ type Service struct {
 	Storefront string        // catalog country, e.g. cz
 	Delay      time.Duration // pause between requests
 	Log        *slog.Logger
+	// TokenExpires is the developer token's expiry, zero if unknown.
+	TokenExpires time.Time
 }
 
 // NewServer returns an MCP server with bootleg's tools registered.
@@ -47,7 +50,7 @@ func NewServer(svc *Service, version string) *sdk.Server {
 		Annotations: &sdk.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(true)},
 	}, handler(svc.Log, "preview_songs", func(ctx context.Context, in SongsInput) (PreviewOutput, error) {
 		out, err := svc.preview(ctx, in)
-		out.Server = serverInfo(version)
+		out.Server = serverInfo(version, svc.TokenExpires, time.Now())
 		return out, err
 	}))
 
@@ -66,7 +69,7 @@ func NewServer(svc *Service, version string) *sdk.Server {
 		Annotations: &sdk.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(true)},
 	}, handler(svc.Log, "list_playlists", func(ctx context.Context, in struct{}) (PlaylistsOutput, error) {
 		out, err := svc.playlists(ctx, in)
-		out.Server = serverInfo(version)
+		out.Server = serverInfo(version, svc.TokenExpires, time.Now())
 		return out, err
 	}))
 
@@ -144,6 +147,8 @@ type ServerInfo struct {
 	Version string   `json:"version"`
 	Tools   []string `json:"tools" jsonschema:"every tool this server has"`
 	Note    string   `json:"note"`
+	// TokenExpires is when the Apple Music developer token stops working.
+	TokenExpires string `json:"token_expires,omitempty"`
 }
 
 // toolNames are every tool NewServer registers; a test keeps it in step.
@@ -153,8 +158,17 @@ const reconnectNote = "If any of these tools are missing from your tool list, bo
 	"connector's tools were loaded: tell the user to reconnect the bootleg connector (claude.ai Settings > " +
 	"Connectors) and start a new chat. Don't improvise what a missing tool would do."
 
-func serverInfo(version string) ServerInfo {
-	return ServerInfo{Version: version, Tools: toolNames, Note: reconnectNote}
+func serverInfo(version string, tokenExpires, now time.Time) ServerInfo {
+	info := ServerInfo{Version: version, Tools: toolNames, Note: reconnectNote}
+	if tokenExpires.IsZero() {
+		return info
+	}
+	info.TokenExpires = tokenExpires.Format(time.DateOnly)
+	if tokenExpires.Sub(now) < config.ExpiryWarning {
+		info.Note += " Also tell the user: the Apple Music developer token expires on " + info.TokenExpires +
+			"; they should get fresh tokens (docs/tokens.md) and run deploy/tokens.sh soon."
+	}
+	return info
 }
 
 // PlaylistInfo is one library playlist.

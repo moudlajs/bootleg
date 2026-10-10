@@ -88,6 +88,7 @@ func cli(ctx context.Context, args []string, stdout, stderr io.Writer, baseURL s
 	if err != nil {
 		return report(stderr, err)
 	}
+	warnExpiry(stderr, cfg, time.Now())
 	if opts.storefront == "" {
 		opts.storefront = cfg.Storefront
 	}
@@ -146,6 +147,21 @@ func resolveVersion(ldflags string, readBuildInfo func() (*debug.BuildInfo, bool
 }
 
 var errFlagsReported = errors.New("invalid flags")
+
+// warnExpiry warns when the developer token expires within config.ExpiryWarning.
+func warnExpiry(w io.Writer, cfg config.Config, now time.Time) {
+	exp, ok := cfg.DevTokenExpires()
+	if !ok {
+		return
+	}
+	switch left := exp.Sub(now); {
+	case left <= 0:
+		fmt.Fprintf(w, "bootleg: warning: %s expired on %s; get a new one (docs/tokens.md).\n", config.EnvDevToken, exp.Format(time.DateOnly))
+	case left < config.ExpiryWarning:
+		fmt.Fprintf(w, "bootleg: warning: %s expires on %s, in %d days; refresh it soon (docs/tokens.md).\n",
+			config.EnvDevToken, exp.Format(time.DateOnly), int(left.Hours()/24))
+	}
+}
 
 type options struct {
 	to          importer.Targets

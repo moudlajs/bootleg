@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -388,5 +389,18 @@ func TestAddRejectsBadSongIDs(t *testing.T) {
 	}
 	if e := call(t, connect(t, newService(t, f)), "add_songs", map[string]any{"to": []string{"lib"}}, &AddOutput{}); !strings.Contains(e, "no songs given") {
 		t.Errorf("empty: %q", e)
+	}
+}
+
+func TestServerInfoTokenExpiry(t *testing.T) {
+	now := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+	if info := serverInfo("v", time.Time{}, now); info.TokenExpires != "" || strings.Contains(info.Note, "expires") {
+		t.Errorf("unknown expiry: %+v", info)
+	}
+	if info := serverInfo("v", now.AddDate(0, 2, 0), now); info.TokenExpires != "2026-12-10" || strings.Contains(info.Note, "expires on") {
+		t.Errorf("far expiry: %+v", info)
+	}
+	if info := serverInfo("v", now.AddDate(0, 0, 3), now); !strings.Contains(info.Note, "expires on 2026-10-13") || !strings.Contains(info.Note, "deploy/tokens.sh") {
+		t.Errorf("near expiry: %+v", info)
 	}
 }
