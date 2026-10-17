@@ -168,6 +168,7 @@ type options struct {
 	name        string
 	storefront  string // empty means "use AM_STOREFRONT or its default"
 	playlistID  string // append here instead of creating a new playlist
+	remove      bool   // take the songs out of -to instead
 	dryRun      bool
 	delay       time.Duration
 	verbose     bool
@@ -185,17 +186,19 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fset.StringVar(&o.name, "name", "", "name of the playlist to create (with -to pl)")
 	fset.StringVar(&o.storefront, "storefront", "", "catalog storefront, e.g. cz or us (default $AM_STOREFRONT or us)")
 	fset.StringVar(&o.playlistID, "playlist-id", "", "append to this existing library playlist (e.g. p.AbC123) instead of creating one (with -to pl)")
+	fset.BoolVar(&o.remove, "remove", false, "undo: take the songs out of the -to destinations (pl needs -playlist-id)")
 	fset.BoolVar(&o.dryRun, "dry-run", false, "search and show matches, but create nothing")
 	fset.DurationVar(&o.delay, "delay", 500*time.Millisecond, "pause between requests (searches, favourites), e.g. 500ms or 2s")
 	fset.BoolVar(&o.verbose, "v", false, "verbose (debug) logging")
 	fset.BoolVar(&o.showVersion, "version", false, "print version and exit")
 	fset.Usage = func() {
-		fmt.Fprintln(stderr, `usage: bootleg [-to pl,lib,fav] [-name "Playlist" | -playlist-id ID] [-storefront cz] [-dry-run] [-delay 500ms] [-v] <file.txt>
+		fmt.Fprintln(stderr, `usage: bootleg [-to pl,lib,fav] [-name "Playlist" | -playlist-id ID] [-remove] [-storefront cz] [-dry-run] [-delay 500ms] [-v] <file.txt>
 
   bootleg -name "Road trip" songs.txt    new playlist (-to pl is the default)
   bootleg -to lib songs.txt              add to your Library
   bootleg -to fav songs.txt              star them: Favourite Songs (and Library)
-  bootleg -to pl,fav -name "Mix" x.txt   playlist and favourites`)
+  bootleg -to pl,fav -name "Mix" x.txt   playlist and favourites
+  bootleg -remove -to fav songs.txt      undo: unfavourite them`)
 		fmt.Fprintln(stderr)
 		fset.PrintDefaults()
 	}
@@ -224,6 +227,14 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	o.to = t
 	if o.name != "" && o.playlistID != "" {
 		return o, errors.New("use either -name (create a playlist) or -playlist-id (append to one), not both")
+	}
+	if o.remove {
+		switch {
+		case o.name != "":
+			return o, errors.New("-remove takes songs out of an existing playlist: use -playlist-id, not -name")
+		case o.to.Playlist && o.playlistID == "":
+			return o, errors.New("-remove -to pl needs -playlist-id (the last part of the playlist's URL)")
+		}
 	}
 	if !o.to.Playlist && (o.name != "" || o.playlistID != "") {
 		return o, errors.New("-name and -playlist-id are for playlists; add pl to -to (e.g. -to pl,fav)")
