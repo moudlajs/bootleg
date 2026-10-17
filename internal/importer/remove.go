@@ -36,7 +36,8 @@ func (r Removed) Total() int { return r.Favorites + r.Playlist + r.Library }
 // also puts the song in the library). Running it twice is harmless.
 func Remove(ctx context.Context, api *applemusic.Client, opts RemoveOptions, ids []string, log *slog.Logger) (Removed, error) {
 	var r Removed
-	n := 0 // requests so far, for pacing
+	ids = unique(ids) // a repeat would be removed twice against a stale track list
+	n := 0            // requests so far, for pacing
 	pause := func() error {
 		n++
 		if n == 1 {
@@ -121,4 +122,16 @@ func Remove(ctx context.Context, api *applemusic.Client, opts RemoveOptions, ids
 		log.Info("removed from library", "tracks", r.Library)
 	}
 	return r, nil
+}
+
+func unique(ids []string) []string {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
 }

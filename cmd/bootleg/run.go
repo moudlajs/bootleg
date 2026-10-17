@@ -52,7 +52,7 @@ func run(ctx context.Context, opts options, api *applemusic.Client, stdout io.Wr
 	}
 
 	if opts.remove {
-		return removeSongs(ctx, opts, api, stdout, log, ids, unmatched, skipped, closest)
+		return removeSongs(ctx, opts, api, stdout, log, lines, skipped)
 	}
 
 	// Write the report before touching Apple, so it exists even if a write fails.
@@ -81,8 +81,9 @@ func run(ctx context.Context, opts options, api *applemusic.Client, stdout io.Wr
 
 // removeSongs leaves unmatched.txt alone: it belongs to the add runs.
 func removeSongs(ctx context.Context, opts options, api *applemusic.Client, stdout io.Writer, log *slog.Logger,
-	ids []string, unmatched []parser.Query, skipped int, closest map[int]string) error {
-	printSummary(stdout, len(ids), unmatched, skipped, "", closest)
+	lines []importer.Line, skipped int) error {
+	ids, unmatched := importer.Split(lines)
+	printSummary(stdout, len(ids), unmatched, skipped, "", closestByLine(lines))
 	if len(ids) == 0 {
 		return errNothingMatched
 	}
@@ -92,7 +93,7 @@ func removeSongs(ctx context.Context, opts options, api *applemusic.Client, stdo
 		Storefront: opts.storefront,
 		Delay:      opts.delay,
 	}, ids, log)
-	printRemoved(stdout, r, opts.playlistID)
+	printRemoved(stdout, r, opts.playlistID, songNames(lines))
 	if err != nil {
 		if r.Total() > 0 {
 			return fmt.Errorf("%w (already removed: %d; running the same command again is safe)", err, r.Total())
@@ -102,7 +103,18 @@ func removeSongs(ctx context.Context, opts options, api *applemusic.Client, stdo
 	return partial(unmatched, "")
 }
 
-func printRemoved(out io.Writer, r importer.Removed, playlistID string) {
+// songNames maps a matched catalog ID to "Artist - Title".
+func songNames(lines []importer.Line) map[string]string {
+	m := map[string]string{}
+	for _, l := range lines {
+		if l.OK {
+			m[l.Song.ID] = l.Song.Artist + " - " + l.Song.Name
+		}
+	}
+	return m
+}
+
+func printRemoved(out io.Writer, r importer.Removed, playlistID string, names map[string]string) {
 	if r.Favorites > 0 {
 		fmt.Fprintf(out, "Unfavourited %d songs.\n", r.Favorites)
 	}
@@ -115,6 +127,10 @@ func printRemoved(out io.Writer, r importer.Removed, playlistID string) {
 	if len(r.NotThere) > 0 {
 		fmt.Fprintln(out, "Nothing to remove for:")
 		for _, s := range r.NotThere {
+			// Entries are "<id> (<reason>)"; show the song instead of the ID.
+			if id, reason, ok := strings.Cut(s, " "); ok && names[id] != "" {
+				s = names[id] + " " + reason
+			}
 			fmt.Fprintf(out, "  %s\n", s)
 		}
 	}

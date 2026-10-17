@@ -930,7 +930,8 @@ func TestRunRemove(t *testing.T) {
 		t.Error("-remove added something")
 	}
 	for _, want := range []string{"Unfavourited 1 songs.", "Removed 1 songs from playlist p.existing.", "Removed 1 songs from your Library.",
-		"b1 (not a favourite)", "b1 (not in the playlist)", "b1 (not in the library)", "line 4: Nobody - Nothing"} {
+		"Björk - Army of Me (not a favourite)", "Björk - Army of Me (not in the playlist)", "Björk - Army of Me (not in the library)",
+		"line 4: Nobody - Nothing"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output missing %q:\n%s", want, out.String())
 		}
@@ -960,5 +961,23 @@ func TestRunRemoveFailsPartWay(t *testing.T) {
 	err := run(context.Background(), opts, api, io.Discard, discardLogger())
 	if !errors.Is(err, applemusic.ErrUnauthorized) || !strings.Contains(err.Error(), "already removed: 1") {
 		t.Errorf("run() error = %v, want ErrUnauthorized with progress", err)
+	}
+}
+
+// A song listed twice is removed once.
+func TestRunRemoveDuplicateLines(t *testing.T) {
+	f, api, path := setup(t, "Portishead - Glory Box\nPortishead - Glory Box\n")
+	var out bytes.Buffer
+	opts := options{remove: true, to: importer.Targets{Playlist: true, Library: true, Favorites: true}, playlistID: "p.existing", file: path}
+	if err := run(context.Background(), opts, api, &out, discardLogger()); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if strings.Join(f.removed, ",") != "fav:p1,pl:i.t1,lib:i.p1" {
+		t.Errorf("removed %v", f.removed)
+	}
+	if strings.Contains(out.String(), "Nothing to remove") {
+		t.Errorf("duplicate reported as not there:\n%s", out.String())
 	}
 }
