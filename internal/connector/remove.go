@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/moudlajs/bootleg/internal/applemusic"
 	"github.com/moudlajs/bootleg/internal/importer"
 )
 
@@ -68,21 +67,18 @@ func (s *Service) remove(ctx context.Context, in RemoveInput) (RemoveOutput, err
 		return out, fmt.Errorf("%d songs is more than %d per call; split the list", len(ids), maxSongs)
 	}
 
-	// A favourite also puts the song in the library, so unfavourite first.
-	if t.Favorites {
-		if err := s.unfavourite(ctx, ids, &out); err != nil {
-			return out, err
-		}
-	}
-	if t.Playlist {
-		if err := s.removeFromPlaylist(ctx, pl, ids, &out); err != nil {
-			return out, err
-		}
-	}
-	if t.Library {
-		if err := s.removeFromLibrary(ctx, ids, &out); err != nil {
-			return out, err
-		}
+	r, err := importer.Remove(ctx, s.API, importer.RemoveOptions{
+		From: t, PlaylistID: pl, Storefront: s.Storefront, Delay: s.Delay,
+	}, ids, s.Log)
+	out.Unfavourited, out.RemovedFromPlaylist, out.RemovedFromLibrary = r.Favorites, r.Playlist, r.Library
+	out.NotThere = append(out.NotThere, r.NotThere...)
+	switch {
+	case errors.Is(err, importer.ErrPlaylistNotFound):
+		return out, fmt.Errorf("playlist %s isn't in the library; use list_playlists to find the right playlist_id", pl)
+	case err != nil && r.Total() > 0:
+		return out, fmt.Errorf("%s. Already removed: %d; calling remove_songs again with the same songs is safe", people(err), r.Total())
+	case err != nil:
+		return out, errors.New(people(err))
 	}
 	return out, nil
 }
@@ -94,92 +90,4 @@ func splitForRemove(lines []importer.Line) ([]string, []Unmatched) {
 		out = append(out, Unmatched{Line: q.Line, Query: q.Raw})
 	}
 	return ids, out
-}
-
-func (s *Service) unfavourite(ctx context.Context, ids []string, out *RemoveOutput) error {
-	for i, id := range ids {
-		if err := s.pause(ctx, i); err != nil {
-			return err
-		}
-		removed, err := s.API.Unfavorite(ctx, id)
-		if err != nil {
-			return s.partial("unfavouriting", out, err)
-		}
-		if removed {
-			out.Unfavourited++
-		} else {
-			out.NotThere = append(out.NotThere, id+" (not a favourite)")
-		}
-	}
-	return nil
-}
-
-func (s *Service) removeFromPlaylist(ctx context.Context, playlistID string, ids []string, out *RemoveOutput) error {
-	tracks, err := s.API.PlaylistTracks(ctx, playlistID)
-	if errors.Is(err, applemusic.ErrNotFound) {
-		return fmt.Errorf("playlist %s isn't in the library; use list_playlists to find the right playlist_id", playlistID)
-	}
-	if err != nil {
-		return s.partial("reading the playlist", out, err)
-	}
-	n := 0
-	for _, id := range ids {
-		found := false
-		for _, tr := range tracks {
-			if tr.CatalogID != id {
-				continue
-			}
-			found = true
-			if err := s.pause(ctx, n); err != nil {
-				return err
-			}
-			n++
-			if err := s.API.RemoveFromPlaylist(ctx, playlistID, tr.ID); err != nil {
-				return s.partial("removing from the playlist", out, err)
-			}
-			out.RemovedFromPlaylist++
-			break // mode=all removes every occurrence of this track
-		}
-		if !found {
-			out.NotThere = append(out.NotThere, id+" (not in the playlist)")
-		}
-	}
-	return nil
-}
-
-func (s *Service) removeFromLibrary(ctx context.Context, ids []string, out *RemoveOutput) error {
-	for i, id := range ids {
-		if err := s.pause(ctx, i); err != nil {
-			return err
-		}
-		libID, ok, err := s.API.LibraryID(ctx, s.Storefront, id)
-		if err != nil {
-			return s.partial("looking up the library", out, err)
-		}
-		if !ok {
-			out.NotThere = append(out.NotThere, id+" (not in the library)")
-			continue
-		}
-		if err := s.API.RemoveFromLibrary(ctx, libID); err != nil {
-			return s.partial("removing from the library", out, err)
-		}
-		out.RemovedFromLibrary++
-	}
-	return nil
-}
-
-func (s *Service) pause(ctx context.Context, i int) error {
-	if i == 0 {
-		return nil
-	}
-	return importer.Sleep(ctx, s.Delay)
-}
-
-// partial words an error that may come after some songs were already removed.
-func (s *Service) partial(step string, out *RemoveOutput, err error) error {
-	done := out.Unfavourited + out.RemovedFromPlaylist + out.RemovedFromLibrary
-	if done == 0 {
-		return fmt.Errorf("%s: %s", step, people(err))
-	}
-	return fmt.Errorf("%s: %s. Already removed: %d; calling remove_songs again with the same songs is safe", step, people(err), done)
 }

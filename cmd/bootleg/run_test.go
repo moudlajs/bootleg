@@ -36,6 +36,7 @@ type fakeAPI struct {
 	appended []string // track IDs from the last append request
 	library  []string // song IDs added to the library, in request order
 	favs     []string // song IDs favourited, in request order
+	removed  []string // what -remove deleted, in order
 }
 
 // catalog maps a search term to the songs the fake returns for it.
@@ -109,9 +110,36 @@ func (f *fakeAPI) handler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"data":[{"id":"p.new"}]}`))
 
+	// For -remove, p1 is everywhere: favourite, library copy i.p1, track i.t1 of p.existing.
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/me/ratings/songs/p1":
+		_, _ = w.Write([]byte(`{"data":[{"id":"p1","attributes":{"value":1}}]}`))
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1/me/ratings/songs/"):
+		f.record("fav:" + strings.TrimPrefix(r.URL.Path, "/v1/me/ratings/songs/"))
+		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && r.URL.Query().Get("relate") == "library":
+		lib := `[]`
+		if strings.HasSuffix(r.URL.Path, "/songs/p1") {
+			lib = `[{"id":"i.p1"}]`
+		}
+		_, _ = w.Write([]byte(`{"data":[{"relationships":{"library":{"data":` + lib + `}}}]}`))
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1/me/library/songs/"):
+		f.record("lib:" + strings.TrimPrefix(r.URL.Path, "/v1/me/library/songs/"))
+		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/me/library/playlists/p.existing/tracks":
+		_, _ = w.Write([]byte(`{"data":[{"id":"i.t1","attributes":{"playParams":{"catalogId":"p1"}}}]}`))
+	case r.Method == http.MethodDelete && r.URL.Path == "/v1/me/library/playlists/p.existing/tracks":
+		f.record("pl:" + r.URL.Query().Get("ids[library-songs]"))
+		w.WriteHeader(http.StatusNoContent)
+
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (f *fakeAPI) record(s string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.removed = append(f.removed, s)
 }
 
 func setup(t *testing.T, input string) (*fakeAPI, *applemusic.Client, string) {
@@ -380,6 +408,8 @@ func TestCLIFlags(t *testing.T) {
 		{"unknown -to", []string{"-to", "lib,cloud", "a.txt"}, exitInput, ""},
 		{"-name without pl", []string{"-to", "lib", "-name", "x", "a.txt"}, exitInput, ""},
 		{"-to pl without a playlist", []string{"-to", "pl,fav", "a.txt"}, exitInput, ""},
+		{"-remove with -name", []string{"-remove", "-name", "x", "a.txt"}, exitInput, ""},
+		{"-remove -to pl without -playlist-id", []string{"-remove", "-to", "pl,fav", "a.txt"}, exitInput, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -493,7 +523,10 @@ func TestCLIExitCodes(t *testing.T) {
 		{"500", status(http.StatusInternalServerError), "a - b\n", false, []string{"-name", "x", "input.txt"}, exitError, "unexpected status 500"},
 		{"missing file", ok, "", false, []string{"-name", "x", "nope.txt"}, exitInput, "open input"},
 		{"only comments", ok, "# nothing\n\n", false, []string{"-name", "x", "input.txt"}, exitInput, "no songs found"},
-		{"nothing matched", ok, "Nobody - Nothing\n", false, []string{"-name", "x", "input.txt"}, exitInput, "nothing to import"},
+		{"nothing matched", ok, "Nobody - Nothing\n", false, []string{"-name", "x", "input.txt"}, exitInput, "nothing was changed"},
+		{"remove", ok, "Portishead - Glory Box\n", false, []string{"-remove", "-to", "fav", "input.txt"}, exitOK, ""},
+		{"remove from unknown playlist", ok, "Portishead - Glory Box\n", false, []string{"-remove", "-playlist-id", "p.nope", "input.txt"}, exitInput, "isn't in the library"},
+		{"remove nothing matched", ok, "Nobody - Nothing\n", false, []string{"-remove", "-to", "fav", "input.txt"}, exitInput, "nothing was changed"},
 		{"bad flag", ok, "", false, []string{"-nope"}, exitInput, ""},
 		{"negative delay", ok, "", false, []string{"-delay", "-1s", "-dry-run", "input.txt"}, exitInput, "must not be negative"},
 	}
@@ -876,5 +909,56 @@ func TestSummaryShowsClosest(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("summary missing %q:\n%s", want, out.String())
 		}
+	}
+}
+
+func TestRunRemove(t *testing.T) {
+	f, api, path := setup(t, input)
+	var out bytes.Buffer
+	opts := options{remove: true, to: importer.Targets{Playlist: true, Library: true, Favorites: true}, playlistID: "p.existing", file: path}
+	err := run(context.Background(), opts, api, &out, discardLogger())
+	if !errors.Is(err, errPartial) { // "Nobody - Nothing" has no match
+		t.Fatalf("run() error = %v, want errPartial", err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// Favourite first (it implies the library), then playlist, then library; b1 is nowhere.
+	if strings.Join(f.removed, ",") != "fav:p1,pl:i.t1,lib:i.p1" {
+		t.Errorf("removed %v", f.removed)
+	}
+	if f.posts+f.appends+len(f.library)+len(f.favs) != 0 {
+		t.Error("-remove added something")
+	}
+	for _, want := range []string{"Unfavourited 1 songs.", "Removed 1 songs from playlist p.existing.", "Removed 1 songs from your Library.",
+		"b1 (not a favourite)", "b1 (not in the playlist)", "b1 (not in the library)", "line 4: Nobody - Nothing"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, out.String())
+		}
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(path), unmatchedFile)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("-remove wrote %s (stat error %v)", unmatchedFile, err)
+	}
+}
+
+// A failure after some removals says so and that re-running is safe.
+func TestRunRemoveFailsPartWay(t *testing.T) {
+	f := &fakeAPI{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Query().Get("relate") == "library" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		f.handler(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	path := filepath.Join(t.TempDir(), "songs.txt")
+	if err := os.WriteFile(path, []byte("Portishead - Glory Box\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	api := applemusic.New(srv.Client(), srv.URL, "fake-dev", "fake-user")
+	opts := options{remove: true, to: importer.Targets{Library: true, Favorites: true}, file: path}
+	err := run(context.Background(), opts, api, io.Discard, discardLogger())
+	if !errors.Is(err, applemusic.ErrUnauthorized) || !strings.Contains(err.Error(), "already removed: 1") {
+		t.Errorf("run() error = %v, want ErrUnauthorized with progress", err)
 	}
 }

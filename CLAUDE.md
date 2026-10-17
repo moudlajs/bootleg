@@ -6,7 +6,8 @@ to you too, and it is how this repo guarantees quality.
 ## What this repository is
 
 `bootleg`: a Go CLI that reads `Artist - Title` lines from a text file and
-sends the songs to a playlist, the Library and/or Favourite Songs (`-to`).
+sends the songs to a playlist, the Library and/or Favourite Songs (`-to`),
+or takes them out again (`-remove`).
 It uses the Apple Music web player's tokens and private
 `amp-api.music.apple.com` endpoints, not MusicKit, so no paid developer
 account is needed. The user supplies the tokens.
@@ -44,7 +45,7 @@ internal/config         env vars + tiny .env loader (only fills unset vars)
 internal/parser         input file → []Query{Artist, Title, Raw}
 internal/matcher        PURE: normalise, reject karaoke/tribute, score, pick best
 internal/applemusic     HTTP client: search (songs, albums), playlists, library, favourites, and their removal
-internal/importer       the engine: Resolve (search + match), Write (playlist/library/favourites); no printing, no files
+internal/importer       the engine: Resolve (search + match), Write (playlist/library/favourites), Remove (undo); no printing, no files
 internal/auth           owner-only OAuth 2.1 sign-in for the hosted connector (passphrase; Claude's client IDs only)
 internal/connector      MCP tools (preview_songs, add_songs, remove_songs, album_tracks, list_playlists) + HTTP transport
 cmd/bootleg-mcp/main.go the connector: stdio locally, HTTP /mcp + /health when PORT is set, sign-in required

@@ -1,7 +1,7 @@
 # Command line
 
 ```text
-bootleg [-to pl,lib,fav] [-name "Playlist" | -playlist-id ID] [-storefront cz] [-dry-run] [-delay 500ms] [-v] <file.txt>
+bootleg [-to pl,lib,fav] [-name "Playlist" | -playlist-id ID] [-remove] [-storefront cz] [-dry-run] [-delay 500ms] [-v] <file.txt>
 ```
 
 ## Install
@@ -36,6 +36,20 @@ playlist, Library, favourites. If a step fails, the error says what's
 already done and the exact command to finish, without creating the
 playlist twice.
 
+## Undo: `-remove`
+
+`-remove` takes the file's songs out of the `-to` destinations instead:
+
+```sh
+bootleg -remove -to fav songs.txt                    # unfavourite
+bootleg -remove -to lib songs.txt                    # delete from the Library
+bootleg -remove -to pl -playlist-id p.Qx9Lm2Kd x.txt # take out of a playlist
+```
+
+Songs that weren't there are listed, not treated as errors, so running it
+twice is harmless. Favourites go first because a favourite also keeps the
+song in the Library. `-remove` never touches `unmatched.txt`.
+
 ## Flags
 
 | Flag | Meaning |
@@ -43,6 +57,7 @@ playlist twice.
 | `-to` | Destinations, see above. Default `pl`. |
 | `-name` | Name of a new playlist (with `pl`). |
 | `-playlist-id` | Add to this existing playlist instead (with `pl`). |
+| `-remove` | Undo: take the songs out of `-to` instead (see above). |
 | `-dry-run` | Show the matches, change nothing. |
 | `-storefront` | Catalog country, e.g. `cz`. Default `$AM_STOREFRONT`, else `us`. |
 | `-delay` | Pause between requests. Default `500ms`. |

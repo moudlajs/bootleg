@@ -17,7 +17,7 @@ import (
 	"github.com/moudlajs/bootleg/internal/parser"
 )
 
-var errNothingMatched = errors.New("no line matched a song; nothing to import")
+var errNothingMatched = errors.New("no line matched a song; nothing was changed")
 
 var errPartial = errors.New("some lines did not match")
 
@@ -51,6 +51,10 @@ func run(ctx context.Context, opts options, api *applemusic.Client, stdout io.Wr
 		return partial(unmatched, "")
 	}
 
+	if opts.remove {
+		return removeSongs(ctx, opts, api, stdout, log, ids, unmatched, skipped, closest)
+	}
+
 	// Write the report before touching Apple, so it exists even if a write fails.
 	reportPath := writeUnmatched(opts.file, unmatched, log)
 	if len(ids) == 0 {
@@ -73,6 +77,47 @@ func run(ctx context.Context, opts options, api *applemusic.Client, stdout io.Wr
 		return resumeHint(err, opts)
 	}
 	return partial(unmatched, reportPath)
+}
+
+// removeSongs leaves unmatched.txt alone: it belongs to the add runs.
+func removeSongs(ctx context.Context, opts options, api *applemusic.Client, stdout io.Writer, log *slog.Logger,
+	ids []string, unmatched []parser.Query, skipped int, closest map[int]string) error {
+	printSummary(stdout, len(ids), unmatched, skipped, "", closest)
+	if len(ids) == 0 {
+		return errNothingMatched
+	}
+	r, err := importer.Remove(ctx, api, importer.RemoveOptions{
+		From:       opts.to,
+		PlaylistID: opts.playlistID,
+		Storefront: opts.storefront,
+		Delay:      opts.delay,
+	}, ids, log)
+	printRemoved(stdout, r, opts.playlistID)
+	if err != nil {
+		if r.Total() > 0 {
+			return fmt.Errorf("%w (already removed: %d; running the same command again is safe)", err, r.Total())
+		}
+		return err
+	}
+	return partial(unmatched, "")
+}
+
+func printRemoved(out io.Writer, r importer.Removed, playlistID string) {
+	if r.Favorites > 0 {
+		fmt.Fprintf(out, "Unfavourited %d songs.\n", r.Favorites)
+	}
+	if r.Playlist > 0 {
+		fmt.Fprintf(out, "Removed %d songs from playlist %s.\n", r.Playlist, playlistID)
+	}
+	if r.Library > 0 {
+		fmt.Fprintf(out, "Removed %d songs from your Library.\n", r.Library)
+	}
+	if len(r.NotThere) > 0 {
+		fmt.Fprintln(out, "Nothing to remove for:")
+		for _, s := range r.NotThere {
+			fmt.Fprintf(out, "  %s\n", s)
+		}
+	}
 }
 
 func printWritten(out io.Writer, w importer.Written, name string) {
