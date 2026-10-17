@@ -38,6 +38,24 @@ refuses requests without sign-in.
   signed in.
 - **Redeploy or roll back:** run the Deploy workflow by hand with a tag.
 
+## After the kill switch fires
+
+It unlinks the project's billing, so the connector stops. To bring it back:
+
+1. Raise the budget if needed (`gcloud billing budgets update … --budget-amount 75CZK`).
+2. Drop the notifications queued while it was off; they still carry the old
+   amount and would unlink billing again right away:
+
+   ```sh
+   gcloud --project bootleg-638112 pubsub subscriptions seek killswitch --time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   ```
+
+3. Re-link billing:
+   `gcloud billing projects link bootleg-638112 --billing-account <id>`.
+4. Roll a new revision so Cloud Run starts instances again:
+   `gcloud --project bootleg-638112 run services update bootleg --region europe-west1 --update-env-vars RESTARTED=$(date +%s)`.
+5. Check `/health`.
+
 ## Cost
 
 One instance at most, scaled to zero when idle, so normal use stays in the
