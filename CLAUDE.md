@@ -167,6 +167,11 @@ program copied into this project's registry) cap cost.
   and some of those stayed open until the 300 s timeout: ~49 h billed in
   10 days, the kill switch fired at 25 CZK (#72). Keep `--timeout` at 60 s;
   every `/mcp` request is logged (`mcp request start/end`) to find the cause.
+- **Re-linking billing after the kill switch fires: purge its queue first.**
+  Budget notifications queued while billing was off still carry the old
+  amount; on re-link they arrived together and unlinked it again (#72).
+  Seek the `killswitch` subscription to now, re-link, then roll a revision
+  (instances didn't start until one was deployed). Steps: docs/hosting.md.
 - **zsh heredocs expand `\uXXXX`.** Writing Go source through
   `cat <<'EOF'` turned the `\uFEFF` escape into a literal BOM, which Go
   rejects. Write Go files with an editor tool, not a heredoc.
