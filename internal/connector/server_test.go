@@ -613,3 +613,39 @@ func TestLogRequestsPassesBodyThroughAndRecords(t *testing.T) {
 		t.Errorf("log leaks the Authorization header:\n%s", out)
 	}
 }
+
+func TestLogRequestsKeepsLargeBodiesWhole(t *testing.T) {
+	big := strings.Repeat("x", 1<<20+100) // over the 1 MiB peek
+	var got int
+	h := logRequests(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = len(b)
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(big)))
+	if got != len(big) {
+		t.Errorf("handler got %d bytes, want %d", got, len(big))
+	}
+}
+
+// Strangers get 401 from sign-in without being read or logged.
+func TestStrangersAreNotLogged(t *testing.T) {
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	signIn, err := auth.New(auth.Config{BaseURL: "http://127.0.0.1", Passphrase: "correct horse battery", SigningKey: []byte(strings.Repeat("k", 32))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(HTTPHandler(NewServer(newService(t, &fakeApple{}), "v"), "v", signIn))
+	t.Cleanup(srv.Close)
+	resp, err := http.Post(srv.URL+"/mcp", "application/json", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized || strings.Contains(logs.String(), "mcp request") {
+		t.Errorf("status %d, logs:\n%s", resp.StatusCode, logs.String())
+	}
+}

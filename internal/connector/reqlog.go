@@ -13,17 +13,23 @@ import (
 // logRequests logs every /mcp request at its start and end: JSON-RPC
 // method(s), client headers, status, duration and whether the response was
 // streamed (#72: some requests from Claude stayed open until the timeout).
-// It never logs bodies, parameters or the Authorization header.
+// It sits inside sign-in, so it only sees the owner's traffic, and never logs
+// bodies, parameters or the Authorization header.
 func logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		methods := "-"
 		if r.Method == http.MethodPost && r.Body != nil {
-			body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+			// Peek at most 1 MiB, then hand the handler exactly the original
+			// stream: what was read, followed by the rest (and any read error).
+			peek, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 			if err == nil {
-				methods = rpcMethods(body)
+				methods = rpcMethods(peek)
 			}
-			r.Body = io.NopCloser(bytes.NewReader(body))
+			r.Body = struct {
+				io.Reader
+				io.Closer
+			}{io.MultiReader(bytes.NewReader(peek), r.Body), r.Body}
 		}
 		attrs := []any{
 			"http", r.Method, "rpc", methods,

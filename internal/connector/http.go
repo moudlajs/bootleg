@@ -36,6 +36,8 @@ func HTTPHandler(s *sdk.Server, version string, signIn *auth.Server) http.Handle
 		mcpHandler.ServeHTTP(w, r)
 	})
 
+	h = logRequests(h)
+
 	mux := http.NewServeMux()
 	if signIn != nil {
 		signIn.Routes(mux)
@@ -44,7 +46,7 @@ func HTTPHandler(s *sdk.Server, version string, signIn *auth.Server) http.Handle
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprintf(w, "ok %s\n", version)
 	})
-	mux.Handle("/mcp", logRequests(h))
+	mux.Handle("/mcp", h)
 	return mux
 }
 
