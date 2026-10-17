@@ -44,7 +44,7 @@ func HTTPHandler(s *sdk.Server, version string, signIn *auth.Server) http.Handle
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprintf(w, "ok %s\n", version)
 	})
-	mux.Handle("/mcp", h)
+	mux.Handle("/mcp", logRequests(h))
 	return mux
 }
 

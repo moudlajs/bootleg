@@ -50,9 +50,10 @@ internal/connector      MCP tools (preview_songs, add_songs, remove_songs, album
 cmd/bootleg-mcp/main.go the connector: stdio locally, HTTP /mcp + /health when PORT is set, sign-in required
 ```
 
-- The connector caps a call at 50 songs (Claude splits longer lists) and
-  4 minutes, paces Apple at 300 ms, and refuses to create a playlist whose
-  name already exists (chats retry; it points at `playlist_id` instead).
+- The connector caps a call at 25 songs (Claude splits longer lists) and
+  50 s (Cloud Run's timeout is 60 s, #72), paces Apple at 300 ms, and
+  refuses to create a playlist whose name already exists (chats retry; it
+  points at `playlist_id` instead).
   Screenshots work because Claude transcribes them into lines first.
 - claude.ai caches tool lists until reconnect: `preview_songs` and
   `list_playlists` report version + `toolNames` (a test keeps it in step),
@@ -123,7 +124,7 @@ waiverwatch, curl-only tests missed a CSP `form-action` bug.
 The connector runs as Cloud Run service `bootleg` in its **own project**
 `bootleg-638112` (`europe-west1`), separate from waiverwatch: nothing is
 shared (deploy rights, identities, kill switch). URL:
-`https://bootleg-697142671706.europe-west1.run.app/mcp`. A 25 CZK budget
+`https://bootleg-697142671706.europe-west1.run.app/mcp`. A 75 CZK budget
 alert and a billing kill switch (`bootleg-killswitch`, waiverwatch's
 program copied into this project's registry) cap cost.
 
@@ -161,6 +162,11 @@ program copied into this project's registry) cap cost.
   not write the change, post it with `gh pr comment` with the first line
   exactly `## Independent review (manual - <full head sha>)`, address it,
   then re-run the `review` job. Any new push needs a new manual review.
+- **Cloud Run bills every second a request is open.** Claude keeps
+  connectors warm in the background (~100 `POST /mcp` a day, even unused),
+  and some of those stayed open until the 300 s timeout: ~49 h billed in
+  10 days, the kill switch fired at 25 CZK (#72). Keep `--timeout` at 60 s;
+  every `/mcp` request is logged (`mcp request start/end`) to find the cause.
 - **zsh heredocs expand `\uXXXX`.** Writing Go source through
   `cat <<'EOF'` turned the `\uFEFF` escape into a literal BOM, which Go
   rejects. Write Go files with an editor tool, not a heredoc.

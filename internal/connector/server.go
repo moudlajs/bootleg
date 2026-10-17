@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	// maxSongs keeps one call well inside Claude's wait (about 1 s per song).
-	maxSongs = 50
-	// callTimeout is below Cloud Run's request timeout, so a slow call fails with a clear error.
-	callTimeout = 4 * time.Minute
+	// maxSongs keeps a call (about 1.2 s per song with favourites) inside callTimeout.
+	maxSongs = 25
+	// callTimeout is below Cloud Run's 60 s request timeout (#72), so a slow call fails with a clear error.
+	callTimeout = 50 * time.Second
 )
 
 // Service is what the tools need: an Apple Music client and how to pace it.
@@ -93,12 +93,12 @@ func NewServer(svc *Service, version string) *sdk.Server {
 
 // SongsInput is preview_songs' arguments.
 type SongsInput struct {
-	Songs string `json:"songs" jsonschema:"one song per line as Artist - Title (lines without ' - ' are searched as they are; blank lines and lines starting with # are ignored); at most 50"`
+	Songs string `json:"songs" jsonschema:"one song per line as Artist - Title (lines without ' - ' are searched as they are; blank lines and lines starting with # are ignored); at most 25"`
 }
 
 // AddInput is add_songs' arguments.
 type AddInput struct {
-	Songs        string   `json:"songs,omitempty" jsonschema:"the same lines as for preview_songs; at most 50 songs in total with song_ids"`
+	Songs        string   `json:"songs,omitempty" jsonschema:"the same lines as for preview_songs; at most 25 songs in total with song_ids"`
 	SongIDs      []string `json:"song_ids,omitempty" jsonschema:"catalog IDs to add as they are, e.g. an alternative the user picked from preview_songs"`
 	To           []string `json:"to" jsonschema:"one or more of: pl (playlist), lib (Library), fav (Favourite Songs)"`
 	PlaylistName string   `json:"playlist_name,omitempty" jsonschema:"with pl: create a new playlist with this name"`

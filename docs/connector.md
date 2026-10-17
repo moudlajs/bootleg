@@ -29,7 +29,7 @@ one song per line first.
 
 - Claude looks the songs up first and shows what matched and what didn't.
   For an unclear request it asks before adding.
-- Up to 50 songs per request; Claude splits longer lists.
+- Up to 25 songs per request; Claude splits longer lists.
 - It adds to an existing playlist when you name one, and never creates a
   second playlist with a name you already have.
 - When a song isn't found, Claude suggests the closest matches ("did you

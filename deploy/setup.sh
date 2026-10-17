@@ -5,7 +5,7 @@
 set -euo pipefail
 PROJECT=${1:-bootleg-638112}
 BILLING=${2:-01D49B-E5CDCF-22ECEC}
-BUDGET_CZK=25             # about $1: any spend at all is a problem
+BUDGET_CZK=75             # about $3; raised from 25 after #72
 REPO=moudlajs/bootleg
 REGION=europe-west1
 SERVICE=bootleg

@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -440,9 +441,9 @@ func TestAddCapsCombinedSongs(t *testing.T) {
 		wantErr      string
 		wantSearches int
 	}{
-		{"51 IDs: refused before searching", "", 51, "more than 50", 0},
-		{"50 IDs + a line: refused after it", "Björk - Army of Me", 50, "more than 50", 1},
-		{"50 IDs + comments only: fits", "# nothing but a comment", 50, "", 0},
+		{"too many IDs: refused before searching", "", maxSongs + 1, "more than 25", 0},
+		{"full IDs + a line: refused after it", "Björk - Army of Me", maxSongs, "more than 25", 1},
+		{"full IDs + comments only: fits", "# nothing but a comment", maxSongs, "", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -565,5 +566,50 @@ func TestAlbumTracksByIDAndErrors(t *testing.T) {
 	out = AlbumOutput{}
 	if e := call(t, cs, "album_tracks", map[string]any{"album": "Björk - Post"}, &out); e != "" || out.Album != nil || len(out.OtherEditions) != 2 {
 		t.Errorf("no match: error %q, out %+v", e, out)
+	}
+}
+
+func TestRPCMethods(t *testing.T) {
+	tests := map[string]string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`:                                  "tools/list",
+		`[{"jsonrpc":"2.0","id":1,"method":"initialize"},{"jsonrpc":"2.0","method":"x"}]`: "initialize,x",
+		`{"jsonrpc":"2.0","id":1,"result":{}}`:                                            "response",
+		`not json`:                                                                        "unparsable",
+	}
+	for body, want := range tests {
+		if got := rpcMethods([]byte(body)); got != want {
+			t.Errorf("rpcMethods(%s) = %q, want %q", body, got, want)
+		}
+	}
+}
+
+func TestLogRequestsPassesBodyThroughAndRecords(t *testing.T) {
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	var seen string
+	h := logRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		seen = string(b)
+		w.(http.Flusher).Flush()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
+	req.Header.Set("Authorization", "Bearer SECRET-TOKEN")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	if seen != `{"jsonrpc":"2.0","id":1,"method":"ping"}` {
+		t.Errorf("handler saw body %q", seen)
+	}
+	out := logs.String()
+	for _, want := range []string{"mcp request start", "mcp request end", "rpc=ping", "status=202", "streamed=true"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "SECRET") {
+		t.Errorf("log leaks the Authorization header:\n%s", out)
 	}
 }
