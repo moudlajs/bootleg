@@ -111,9 +111,6 @@ func Remove(ctx context.Context, api *applemusic.Client, opts RemoveOptions, ids
 				r.NotThere = append(r.NotThere, id+" (not in the library)")
 				continue
 			}
-			if err := pause(); err != nil {
-				return r, err
-			}
 			if err := api.RemoveFromLibrary(ctx, libID); err != nil {
 				return r, fmt.Errorf("removing from the library: %w", writeErr(err))
 			}

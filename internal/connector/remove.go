@@ -72,15 +72,17 @@ func (s *Service) remove(ctx context.Context, in RemoveInput) (RemoveOutput, err
 	}, ids, s.Log)
 	out.Unfavourited, out.RemovedFromPlaylist, out.RemovedFromLibrary = r.Favorites, r.Playlist, r.Library
 	out.NotThere = append(out.NotThere, r.NotThere...)
-	switch {
-	case errors.Is(err, importer.ErrPlaylistNotFound):
-		return out, fmt.Errorf("playlist %s isn't in the library; use list_playlists to find the right playlist_id", pl)
-	case err != nil && r.Total() > 0:
-		return out, fmt.Errorf("%s. Already removed: %d; calling remove_songs again with the same songs is safe", people(err), r.Total())
-	case err != nil:
-		return out, errors.New(people(err))
+	if err == nil {
+		return out, nil
 	}
-	return out, nil
+	msg := people(err)
+	if errors.Is(err, importer.ErrPlaylistNotFound) {
+		msg = fmt.Sprintf("playlist %s isn't in the library; use list_playlists to find the right playlist_id", pl)
+	}
+	if r.Total() > 0 {
+		msg += fmt.Sprintf(". Already removed: %d; calling remove_songs again with the same songs is safe", r.Total())
+	}
+	return out, errors.New(msg)
 }
 
 func splitForRemove(lines []importer.Line) ([]string, []Unmatched) {
