@@ -36,6 +36,8 @@ func HTTPHandler(s *sdk.Server, version string, signIn *auth.Server) http.Handle
 		mcpHandler.ServeHTTP(w, r)
 	})
 
+	h = logRequests(h)
+
 	mux := http.NewServeMux()
 	if signIn != nil {
 		signIn.Routes(mux)

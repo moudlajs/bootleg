@@ -52,7 +52,7 @@ jobs:
           docker build --build-arg VERSION="$TAG" -t "$IMAGE" .
           docker push "$IMAGE"
 
-      # Secrets come from Secret Manager at run time; --timeout 300 covers a 4-minute tool call.
+      # Secrets come from Secret Manager at run time. --timeout 60: idle requests held open by clients are billed (#72).
       - name: Deploy
         id: deploy
         env:
@@ -73,7 +73,7 @@ jobs:
             --cpu 1 \
             --memory 256Mi \
             --concurrency 10 \
-            --timeout 300 \
+            --timeout 60 \
             --set-env-vars "BOOTLEG_BASE_URL=$BASE_URL" \
             --set-secrets "BOOTLEG_SIGNING_KEY=bootleg-signing-key:latest,BOOTLEG_PASSPHRASE=bootleg-passphrase:latest,AM_DEV_TOKEN=bootleg-am-dev-token:latest,AM_USER_TOKEN=bootleg-am-user-token:latest,AM_STOREFRONT=bootleg-am-storefront:latest" \
             --quiet

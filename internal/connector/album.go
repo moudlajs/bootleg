@@ -34,7 +34,7 @@ type AlbumOutput struct {
 }
 
 const albumNote = "Show the tracklist and where it will go; after the user confirms, add the tracks with add_songs " +
-	"song_ids in this order (at most 50 per call)."
+	"song_ids in this order (at most 25 per call)."
 
 func (s *Service) album(ctx context.Context, in AlbumInput) (AlbumOutput, error) {
 	out := AlbumOutput{Tracks: []Match{}, OtherEditions: []AlbumInfo{}, Note: albumNote}
