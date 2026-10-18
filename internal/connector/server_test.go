@@ -649,3 +649,33 @@ func TestStrangersAreNotLogged(t *testing.T) {
 		t.Errorf("status %d, logs:\n%s", resp.StatusCode, logs.String())
 	}
 }
+
+func TestSubscriptionsListenReturns(t *testing.T) {
+	srv := httptest.NewServer(HTTPHandler(NewServer(newService(t, &fakeApple{}), "v"), "v", nil))
+	t.Cleanup(srv.Close)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp", strings.NewReader(
+		`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{"notifications":{"toolsListChanged":true},`+
+			`"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"},`+
+			`"io.modelcontextprotocol/clientCapabilities":{}}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", "2026-07-28")
+	req.Header.Set("Mcp-Method", "subscriptions/listen")
+
+	// The tool list never changes while running (#77), so nothing may hold this open.
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading the answer: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"result"`) {
+		t.Errorf("status %d, body %s", resp.StatusCode, body)
+	}
+}

@@ -166,8 +166,11 @@ program copied into this project's registry) cap cost.
 - **Cloud Run bills every second a request is open.** Claude keeps
   connectors warm in the background (~100 `POST /mcp` a day, even unused),
   and some of those stayed open until the 300 s timeout: ~49 h billed in
-  10 days, the kill switch fired at 25 CZK (#72). Keep `--timeout` at 60 s;
-  every `/mcp` request is logged (`mcp request start/end`) to find the cause.
+  10 days, the kill switch fired at 25 CZK (#72). The cause was
+  `subscriptions/listen`: go-sdk advertises `tools.listChanged` by default
+  and parks that call until the timeout (#77). Keep `ServerOptions.Capabilities`
+  without listChanged (a test pins it), `--timeout` at 60 s, and the
+  `mcp request start/end` log lines.
 - **Re-linking billing after the kill switch fires: purge its queue first.**
   Budget notifications queued while billing was off still carry the old
   amount; on re-link they arrived together and unlinked it again (#72).
