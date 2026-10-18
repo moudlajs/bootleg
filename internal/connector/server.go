@@ -41,6 +41,9 @@ func NewServer(svc *Service, version string) *sdk.Server {
 			"Songs are lines of \"Artist - Title\". From a screenshot or a pasted tracklist, transcribe one song per " +
 			"line first. Always call preview_songs, show the user what matched and what didn't, and only call " +
 			"add_songs once they confirm where the songs should go.",
+		// No listChanged: the tools never change while running, and the SDK would otherwise
+		// hold every subscriptions/listen open until Cloud Run's 60 s timeout (#77).
+		Capabilities: &sdk.ServerCapabilities{Tools: &sdk.ToolCapabilities{}},
 	})
 
 	sdk.AddTool(s, &sdk.Tool{
